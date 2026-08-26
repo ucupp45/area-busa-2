@@ -1,0 +1,97 @@
+@import "tailwindcss";
+
+@theme {
+  --color-navy-dark: #0B1F44;
+  --color-accent-blue: #A8D8F0;
+}
+
+/* ── Dark Mode Variables ─────────────────────────────────── */
+:root {
+  --bg-main:      #f9fafb;
+  --bg-card:      #ffffff;
+  --bg-sidebar:   #0B1F44;
+  --text-primary: #0B1F44;
+  --text-muted:   #6b7280;
+  --border-color: #e5e7eb;
+}
+
+.dark {
+  --bg-main:      #0f172a;
+  --bg-card:      #1e293b;
+  --bg-sidebar:   #020617;
+  --text-primary: #f1f5f9;
+  --text-muted:   #94a3b8;
+  --border-color: #334155;
+}
+
+/* ── Terapkan ke elemen utama ────────────────────────────── */
+body {
+  background-color: var(--bg-main);
+  color: var(--text-primary);
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+/* ── Dark mode override untuk card & sidebar ─────────────── */
+.dark .card-surface {
+  background-color: var(--bg-card) !important;
+  border-color: var(--border-color) !important;
+  color: var(--text-primary) !important;
+}
+
+.dark .sidebar-surface {
+  background-color: var(--bg-sidebar) !important;
+}
+
+.dark .header-surface {
+  background-color: var(--bg-card) !important;
+  border-color: var(--border-color) !important;
+}
+
+/* ── Dark overrides untuk tabel, text, border ────────────── */
+.dark table thead tr {
+  background-color: #1e293b !important;
+  color: #94a3b8 !important;
+}
+.dark table tbody tr {
+  border-color: #334155 !important;
+  color: #cbd5e1 !important;
+}
+.dark table tbody tr:hover {
+  background-color: #273549 !important;
+}
+.dark .text-gray-700  { color: #cbd5e1 !important; }
+.dark .text-gray-600  { color: #94a3b8 !important; }
+.dark .text-gray-500  { color: #94a3b8 !important; }
+.dark .text-gray-400  { color: #64748b !important; }
+.dark .bg-gray-50     { background-color: #1e293b !important; }
+.dark .bg-white       { background-color: #1e293b !important; }
+.dark .border-gray-200{ border-color: #334155 !important; }
+.dark .border-gray-100{ border-color: #1e293b !important; }
+
+/* ── Custom Animations ───────────────────────────────────── */
+@keyframes popupFadeIn {
+  from { opacity: 0; transform: scale(0.95) translateY(10px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(-10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.animate-popup {
+  animation: popupFadeIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-slide-down {
+  animation: slideDown 0.3s ease-out forwards;
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.3s ease-out forwards;
+}
