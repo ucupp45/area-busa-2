@@ -13,7 +13,8 @@ const Login = () => {
   // ==========================================
   const validUsers = [
     { username: 'ppc_admin', password: 'password123', role: 'PPC', name: 'Yusup Kurniawan' },
-    { username: 'operator1', password: 'password123', role: 'Operator', name: 'Operator V1' }
+    { username: 'operator1', password: 'password123', role: 'Operator', name: 'Operator V1' },
+    { username: 'superadmin', password: 'superadmin123', role: 'Superadmin', name: 'Super Administrator' }
   ];
 
   const handleLogin = (e) => {

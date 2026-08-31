@@ -12,15 +12,14 @@ const storage = multer.diskStorage({
     }
 });
 
-// Filter menerima file Excel DAN PDF
+// Filter menerima file Excel saja
 const fileFilter = (req, file, cb) => {
     const isExcel = file.mimetype.includes('excel') || file.mimetype.includes('spreadsheetml');
-    const isPdf = file.mimetype === 'application/pdf';
 
-    if (isExcel || isPdf) {
+    if (isExcel) {
         cb(null, true);
     } else {
-        cb(new Error('Format file tidak didukung! Harap upload file Excel (.xlsx) atau PDF (.pdf)'), false);
+        cb(new Error('Format file tidak didukung! Harap upload file Excel (.xlsx)'), false);
     }
 };
 

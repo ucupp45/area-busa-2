@@ -22,10 +22,15 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads'))); // Mengizi
 const spkRoutes     = require('./routes/spkRoutes');
 const machineRoutes = require('./routes/machineRoutes');
 const mesinManpowerRoutes = require('./routes/mesinManpowerRoutes');
+const matrixRoutes = require('./routes/matrixRoutes');
+const realisasiRoutes = require('./routes/realisasiRoutes');
 
+// ── 3. MOUNT ROUTER ──────────────────────────────────────────
 app.use('/api/spk',     spkRoutes);
 app.use('/api/machines', machineRoutes);
 app.use('/api/mesin-manpower', mesinManpowerRoutes);
+app.use('/api/matrix', matrixRoutes);
+app.use('/api/realisasi', realisasiRoutes);
 
 app.get('/', (req, res) => {
     res.json({ message: "Server Dashboard Mesin Vertikal Berjalan Lancar!" });

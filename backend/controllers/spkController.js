@@ -322,8 +322,14 @@ async function matchAndCalculate(rawRows) {
         // --- PACKING CALCULATION ---
         const joinedCustomersString = joinedCustomers.join(', ');
         const isRas = joinedCustomersString.toLowerCase().includes('ras');
-        const packingVarians = isRas ? 'III' : 'I';
-        const packingCt = isRas ? 0.15 : 0.47;
+        
+        const packingVarians = isRas ? 'Varians III' : 'Varians I';
+        let packingCt = isRas ? 0.15 : 0.47;
+        const matchedPacking = matrixData.find(m => m.tipe_mesin === 'Packing' && m.varians === packingVarians);
+        if (matchedPacking) {
+            packingCt = Number(matchedPacking.cycle_time_menit);
+        }
+
 
         const packingFrekuensi = group.totalPackingFrekuensi;
 
@@ -331,6 +337,7 @@ async function matchAndCalculate(rawRows) {
 
         summaryPerMesin['Packing'].totalWaktu += packingSummary;
         summaryPerMesin['Packing'].totalQty += group.totalQty;
+        summaryPerMesin['Packing'].totalFrekuensi = (summaryPerMesin['Packing'].totalFrekuensi || 0) + packingFrekuensi;
 
         parsedData.push({
             noWo: joinedWos.join(', '),
@@ -418,19 +425,13 @@ exports.previewSPK = async (req, res) => {
         let rawRows = [];
         let parsedShift = 1;
 
-        if (ext === '.pdf') {
-            const dataBuffer = fs.readFileSync(filePath);
-            const pdfData = await pdfParse(dataBuffer);
-            const parsedRes = parseSPKPdf(pdfData.text);
-            rawRows = parsedRes.rows;
-            parsedShift = parsedRes.shift;
-        } else if (ext === '.xlsx' || ext === '.xls') {
+        if (ext === '.xlsx' || ext === '.xls') {
             const parsedRes = parseSPKExcel(filePath);
             rawRows = parsedRes.rows;
             parsedShift = parsedRes.shift;
         } else {
             fs.unlinkSync(filePath);
-            return res.status(400).json({ message: 'Format file tidak didukung. Gunakan .pdf atau .xls/.xlsx' });
+            return res.status(400).json({ message: 'Format file tidak didukung. Gunakan .xls/.xlsx' });
         }
 
         if (rawRows.length === 0) {
@@ -549,8 +550,8 @@ exports.previewSPK = async (req, res) => {
         res.json({
             fileName: req.file.originalname,
             savedFileName: req.file.filename,
-            fileType: ext === '.pdf' ? 'PDF' : 'Excel',
             shift: parsedShift,
+            fileType: 'Excel',
             totalEstimasiWaktu,
             mesinDibutuhkan,
             manpowerDibutuhkan: mesinDibutuhkan * 4,
@@ -1126,6 +1127,7 @@ exports.calculateSummary = async (req, res) => {
         const [matrixVertikal] = await db.query("SELECT nama_item, cycle_time_menit, varians FROM cycle_time_matrix WHERE tipe_mesin = 'Vertikal'");
         const [matrixHorizontal] = await db.query("SELECT nama_item, varians, ct_c1, ct_c2, ct_ptu, ct_pma, ct_pmu, ct_c3 FROM cycle_time_matrix WHERE tipe_mesin = 'Horizontal'");
         const [matrixCarousel] = await db.query("SELECT nama_item, varians, ct_c1, ct_c2, ct_ptu, ct_pma, ct_c3 FROM cycle_time_matrix WHERE tipe_mesin = 'Carousel'");
+        const [matrixPacking] = await db.query("SELECT varians, cycle_time_menit FROM cycle_time_matrix WHERE tipe_mesin = 'Packing'");
 
         const sortedVertikal = matrixVertikal.sort((a, b) => b.nama_item.length - a.nama_item.length);
         const sortedHorizontal = matrixHorizontal.sort((a, b) => b.nama_item.length - a.nama_item.length);
@@ -1135,6 +1137,10 @@ exports.calculateSummary = async (req, res) => {
         let totalWaktuHorizontal = 0;
         let totalWaktuCarousel = 0;
         let totalWaktuPacking = 0;
+
+        let totalQtyHorizontal = 0;
+        let totalQtyCarousel = 0;
+        let totalFrekuensiPacking = 0;
 
         const vertikalData = [];
         const horizontalData = [];
@@ -1188,6 +1194,7 @@ exports.calculateSummary = async (req, res) => {
 
             // --- KALKULASI HORIZONTAL (Hanya jika tag mesin adalah Horizontal) ---
             if (row.mesinTujuan === 'Horizontal') {
+                totalQtyHorizontal += qty;
                 let c1Matriks = 0, c2Matriks = 0, ptuMatriks = 0, pmaMatriks = 0, pmuMatriks = 0, c3Matriks = 0;
                 let variansHorizontal = '-';
 
@@ -1229,6 +1236,7 @@ exports.calculateSummary = async (req, res) => {
 
             // --- KALKULASI CAROUSEL (Hanya jika tag mesin adalah Carousel) ---
             if (row.mesinTujuan === 'Carousel') {
+                totalQtyCarousel += qty;
                 let c1Matriks = 0, c2Matriks = 0, ptuMatriks = 0, pmaMatriks = 0, c3Matriks = 0;
                 let variansCarousel = '-';
 
@@ -1276,8 +1284,14 @@ exports.calculateSummary = async (req, res) => {
             // --- KALKULASI PACKING ---
             const cust = row.customer ? String(row.customer).toLowerCase() : '';
             const isRas = cust.includes('ras');
-            const variansPacking = isRas ? 'III' : 'I';
-            const ctPacking = isRas ? 0.15 : 0.54;
+            const variansPacking = isRas ? 'Varians III' : 'Varians I';
+            
+            let ctPacking = isRas ? 0.15 : 0.47;
+            const matchedPacking = matrixPacking.find(m => m.varians === variansPacking);
+            if (matchedPacking) {
+                ctPacking = Number(matchedPacking.cycle_time_menit);
+            }
+
 
             let frekuensiPacking = 0;
             if (t > 0 && qty > 0) {
@@ -1287,6 +1301,8 @@ exports.calculateSummary = async (req, res) => {
                     frekuensiPacking = Math.ceil((t * qty) / 20);
                 }
             }
+
+            totalFrekuensiPacking += frekuensiPacking;
 
             const subtotalWaktuPacking = frekuensiPacking * ctPacking;
             totalWaktuPacking += subtotalWaktuPacking;
@@ -1333,6 +1349,7 @@ exports.calculateSummary = async (req, res) => {
             horizontal: {
                 data: horizontalData,
                 summary: {
+                    totalQty: totalQtyHorizontal,
                     totalWaktu: totalWaktuHorizontal.toFixed(2),
                     kapasitas1Shift: kapasitas1Shift,
                     estimasiBukaanMesin: estBukaanHorizontal,
@@ -1344,6 +1361,7 @@ exports.calculateSummary = async (req, res) => {
             carousel: {
                 data: carouselData,
                 summary: {
+                    totalQty: totalQtyCarousel,
                     totalWaktu: totalWaktuCarousel.toFixed(2),
                     kapasitas1Shift: kapasitas1Shift,
                     estimasiBukaanMesin: estBukaanCarousel,
@@ -1355,6 +1373,7 @@ exports.calculateSummary = async (req, res) => {
             packing: {
                 data: packingData,
                 summary: {
+                    totalFrekuensi: totalFrekuensiPacking,
                     totalWaktu: totalWaktuPacking.toFixed(2),
                     kapasitas1Shift: kapasitas1Shift,
                     estimasiBukaanMesin: 1, // Fixed area
@@ -1508,5 +1527,28 @@ exports.calculateOEE = async (req, res) => {
     } catch (error) {
         console.error('[ERROR] calculateOEE:', error);
         res.status(500).json({ message: 'Gagal melakukan kalkulasi OEE' });
+    }
+};
+
+exports.getActiveWOs = async (req, res) => {
+    try {
+        const query = `
+            SELECT 
+                s.no_wo, 
+                s.nama_item,
+                s.ukuran_t, 
+                s.qty_cutting,
+                COALESCE(SUM(rc.hasil_qty), 0) as qty_terpenuhi
+            FROM spk_items s
+            LEFT JOIN realisasi_carousel rc ON s.no_wo = rc.no_wo AND rc.status = 'OK'
+            WHERE s.no_wo IS NOT NULL AND s.no_wo != ''
+            GROUP BY s.no_wo, s.nama_item, s.ukuran_t, s.qty_cutting
+            HAVING qty_terpenuhi < s.qty_cutting
+        `;
+        const [rows] = await db.query(query);
+        res.json(rows);
+    } catch (error) {
+        console.error('[ERROR] getActiveWOs:', error);
+        res.status(500).json({ message: 'Gagal mengambil data WO aktif' });
     }
 };

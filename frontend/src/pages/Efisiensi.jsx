@@ -77,9 +77,6 @@ const Efisiensi = () => {
          let mV = 0, mH = 0, mC = 0;
          
          for (const spk of spkHariIni) {
-             const waktuSpk = Number(spk.total_waktu_spk);
-             if (waktuSpk <= 0) continue;
-             
              wV += Number(spk.waktu_v) || 0;
              wH += Number(spk.waktu_h) || 0;
              wC += Number(spk.waktu_c) || 0;
@@ -87,14 +84,12 @@ const Efisiensi = () => {
              mV += Number(spk.mesin_v) || 0;
              mH += Number(spk.mesin_h) || 0;
              mC += Number(spk.mesin_c) || 0;
-             
-             const base = Math.max(1, Math.ceil(waktuSpk / KELAS_MESIN));
-             
-             Vertikal += base;
-             Horizontal += Math.max(1, Math.floor(base / 1.5));
-             Carousel += Math.max(1, Math.floor(base / 2));
-             if (base > 2) CNC += 1;
          }
+         
+         Vertikal = mV;
+         Horizontal = mH;
+         Carousel = mC;
+         CNC = Vertikal > 2 ? 1 : 0;
 
          let final_mV = wV > 0 ? Math.ceil(wV / KELAS_MESIN) : 1;
          if (final_mV > 3) final_mV = 3; // Max capacity Vertikal

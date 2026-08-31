@@ -1,6 +1,6 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useState, useEffect } from 'react';
-import { LayoutDashboard, FilePlus, Activity, Package, Database, Settings, LogOut, TrendingUp } from 'lucide-react';
+import { LayoutDashboard, FilePlus, Activity, Package, Database, Settings, LogOut, TrendingUp, ClipboardCheck } from 'lucide-react';
 import { useSettings } from '../context/SettingsContext';
 
 const Layout = ({ children }) => {
@@ -41,8 +41,8 @@ const Layout = ({ children }) => {
       name: t.dashboard,  
       icon: LayoutDashboard
     },
-    ...(user.role === 'PPC' ? [{ path: '/insert-spk', name: t.insertSpk, icon: FilePlus }] : []),
-    // { path: '/realisasi',  name: t.realisasi || 'Realisasi', icon: TrendingUp },
+    ...((user.role === 'PPC' || user.role === 'Superadmin') ? [{ path: '/insert-spk', name: t.insertSpk, icon: FilePlus }] : []),
+    { path: '/realisasi',  name: t.realisasi || 'Realisasi', icon: ClipboardCheck },
     { path: '/efisiensi',  name: t.efisiensi,  icon: Activity },
     // { path: '/stok',       name: t.stok,       icon: Package },
     { 

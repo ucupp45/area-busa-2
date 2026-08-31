@@ -1,6 +1,7 @@
 @import "tailwindcss";
 
 @theme {
+  --font-sans: "Tw Cen MT", "Century Gothic", "Trebuchet MS", sans-serif;
   --color-navy-dark: #0B1F44;
   --color-accent-blue: #A8D8F0;
 }
@@ -25,6 +26,10 @@
 }
 
 /* ── Terapkan ke elemen utama ────────────────────────────── */
+body, button, input, textarea, select, table, th, td {
+  font-family: var(--font-sans);
+}
+
 body {
   background-color: var(--bg-main);
   color: var(--text-primary);

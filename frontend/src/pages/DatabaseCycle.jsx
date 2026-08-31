@@ -5,15 +5,58 @@ import { useParams } from 'react-router-dom';
 import royalCorpLogo from '../assets/royal-corp-logo.jpg';
 
 const DatabaseCycle = () => {
-  const matriksVerticalData = [
-    { varians: 'I', shortBlock: 'D 16', equivalents: ['D 11', 'D 12', 'D 13', 'D 14', 'D 15', 'RF', 'TF 1', 'TF 2', 'TF 3', 'TFP', 'GR 1', 'GR 2', 'GR 3', 'RK 2'], ct: 1.8 },
-    { varians: 'II', shortBlock: 'D 18', equivalents: ['D 19', 'D 20', 'D 22', 'D 23', 'FR 18', 'FR 20', 'FR 22', 'BC 16', 'BC 18', 'BC 21', 'RH 3', 'TF 4', 'TF 5', 'TF 6', 'GR 4', 'GR 5'], ct: 2.0 },
-    { varians: 'III', shortBlock: 'D 24', equivalents: ['D 25', 'D 26', 'FR 24', 'HR 24', 'FR 25', 'RHL 25', 'RHL 26', 'RHL 28', 'BC 25', 'HR 26'], ct: 2.2 },
-    { varians: 'IV', shortBlock: 'D 40', equivalents: ['D 28', 'D 30', 'D 32', 'D 33', 'D 35', 'D 42', 'D 50', 'D 55', 'FR 30', 'FR 40', 'FRH 40', 'FR 5 - 40', 'FR 8 - 50', 'HR 30', 'HR 35', 'RHL 32', 'RHL 35', 'RHL 50', 'RHL 55', 'GH 55'], ct: 2.3 },
-    { varians: 'V', shortBlock: 'R 50', equivalents: ['R 40', 'R 55'], ct: 2.5 },
-    { varians: 'VI', shortBlock: 'R 100', equivalents: ['R 70', 'R 90'], ct: 3.6 }
-  ];
+  const [matriksVerticalData, setMatriksVerticalData] = useState([]);
   const { mesin } = useParams();
+
+  const fetchMatrixData = useCallback(async () => {
+    try {
+      const res = await axios.get('http://localhost:5000/api/matrix');
+      const data = res.data;
+      
+      const buildMatrix = (tipe) => {
+        const grouped = {};
+        data.filter(m => m.tipe_mesin === tipe).forEach(item => {
+          const v = item.varians;
+          if (!grouped[v]) {
+            grouped[v] = { 
+              varians: v.replace('Varians ', ''), 
+              fullVarians: v, 
+              shortBlock: item.nama_item, 
+              base: item.nama_item, 
+              typePacking: item.nama_item, 
+              equivalent: 'ALL QUALITY', 
+              dummy: v.replace('Varians ', ''), 
+              ct: Number(item.cycle_time_menit || 0), 
+              c1: Number(item.ct_c1 || 0), 
+              c2: Number(item.ct_c2 || 0), 
+              ptu: Number(item.ct_ptu || 0), 
+              pma: Number(item.ct_pma || 0), 
+              pmu: Number(item.ct_pmu || 0), 
+              c3: Number(item.ct_c3 || 0),
+              equivalents: [], 
+              products: [] 
+            };
+          } else {
+            grouped[v].equivalents.push(item.nama_item);
+            grouped[v].products.push(item.nama_item);
+          }
+        });
+        return Object.values(grouped).sort((a,b) => a.fullVarians.localeCompare(b.fullVarians));
+      };
+
+      setMatriksVerticalData(buildMatrix('Vertikal'));
+      setMatriksHorizontal(buildMatrix('Horizontal'));
+      setMatriksCarousel(buildMatrix('Carousel'));
+      setMatriksPacking(buildMatrix('Packing'));
+    } catch (e) {
+      console.error(e);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchMatrixData();
+  }, [fetchMatrixData]);
+
   const activeMachine = mesin || 'vertikal';
   const [activeTab, setActiveTab] = useState('cycle_time');
   // ==========================================
@@ -79,34 +122,15 @@ const DatabaseCycle = () => {
   const maxProductsLength = 20;
 
   // Data Matriks Short Block — HORIZONTAL MACHINE (8 Varians, 6 kolom CT)
-  const matriksHorizontal = [
-    { varians: 'I', base: 'D 11', dummy: 'I', c1: 1.18, c2: 0.10, ptu: 0.02, pma: 0.10, pmu: 0.08, c3: 0.10, products: ['D 12', 'TF1', 'GR 1', 'D 13', 'D 14', 'TF2', 'GR 2', 'D 15', 'D 16', 'TF3', 'TFP', 'GR 3', 'RF'] },
-    { varians: 'II', base: 'D 18', dummy: 'II', c1: 1.18, c2: 0.10, ptu: 0.02, pma: 0.10, pmu: 0.08, c3: 0.10, products: ['D 19', 'TF4', 'GR 4', 'BC 16', 'BC 18', 'FR 18', 'RH 3'] },
-    { varians: 'III', base: 'D 20', dummy: 'III', c1: 1.18, c2: 0.10, ptu: 0.02, pma: 0.10, pmu: 0.08, c3: 0.10, products: ['TF5', 'GR 5', 'FR 20', 'D 22', 'D 23', 'TF6', 'FR 22', 'BC 21', 'RK 2'] },
-    { varians: 'IV', base: 'D 24', dummy: 'IV', c1: 1.18, c2: 0.10, ptu: 0.02, pma: 0.11, pmu: 0.08, c3: 0.10, products: ['D 26', 'D 25', 'TF7', 'BC 25', 'FR 24', 'FR 25', 'RHL 25', 'RHL 26', 'RHL 28', 'HR 24', 'HR 26'] },
-    { varians: 'V', base: 'D 28', dummy: 'V', c1: 1.18, c2: 0.10, ptu: 0.02, pma: 0.10, pmu: 0.08, c3: 0.10, products: ['D 30', 'D 32', 'D 33', 'D 35', 'FR 30', 'RHL 32', 'RHL 35', 'HR 30', 'HR 32', 'HR 35'] },
-    { varians: 'VI', base: 'D 40', dummy: 'VI', c1: 1.18, c2: 0.10, ptu: 0.02, pma: 0.15, pmu: 0.08, c3: 0.10, products: ['D 42', 'D 50', 'D 55', 'GH 55', 'FR 5 - 40', 'FR 8 - 50', 'FR 40', 'FRH 40', 'RHL 50', 'RHL 55', 'RHL 55'] },
-    { varians: 'VII', base: 'R 40', dummy: 'VII', c1: 1.18, c2: 0.10, ptu: 0.02, pma: 0.19, pmu: 0.08, c3: 0.10, products: ['R 50', 'R 55'] },
-    { varians: 'VIII', base: 'R 70', dummy: 'VIII', c1: 1.18, c2: 0.10, ptu: 0.02, pma: 0.27, pmu: 0.08, c3: 0.10, products: ['R 90', 'R 100'] },
-  ];
+  const [matriksHorizontal, setMatriksHorizontal] = useState([]);
   const maxHorizontalProducts = 13;
 
   // Data Matriks Short Block — CAROUSEL MACHINE (5 Varians, 5 kolom CT — tanpa PMU)
-  const matriksCarousel = [
-    { varians: 'I', base: 'D 11', dummy: 'I', c1: 2.40, c2: 1.20, ptu: 0.03, pma: 0.36, c3: 0.60, products: ['D 12', 'TF1', 'GR 1', 'D 13', 'D 14', 'TF2', 'GR 2', 'D 15', 'D 16', 'TF3', 'TFP', 'GR 3', 'RF'] },
-    { varians: 'II', base: 'D 18', dummy: 'II', c1: 2.40, c2: 1.20, ptu: 0.03, pma: 0.59, c3: 0.60, products: ['D 19', 'TF4', 'GR 4', 'BC 16', 'BC 18', 'FR 18', 'RH 3'] },
-    { varians: 'III', base: 'D 20', dummy: 'III', c1: 2.40, c2: 1.20, ptu: 0.03, pma: 0.64, c3: 0.60, products: ['TF5', 'GR 5', 'FR 20', 'D 22', 'D 23', 'TF6', 'FR 22', 'BC 21', 'RK 2'] },
-    { varians: 'IV', base: 'D 24', dummy: 'IV', c1: 2.40, c2: 1.20, ptu: 0.03, pma: 0.70, c3: 0.60, products: ['D 25', 'D 26', 'TF7', 'BC 25', 'FR 24', 'FR 25', 'RHL 25', 'RHL 26', 'RHL 28', 'HR 24', 'HR 26', 'D 28', 'D 30', 'D 32', 'D 33', 'D 35', 'FR 30', 'RHL 32', 'RHL 35', 'HR 30', 'HR 32', 'HR 35'] },
-    { varians: 'V', base: 'D 40', dummy: 'V', c1: 2.40, c2: 1.20, ptu: 0.03, pma: 0.79, c3: 0.60, products: ['D 42', 'D 50', 'D 55', 'GH 55', 'FR 5 - 40', 'FR 8 - 50', 'FR 40', 'FRH 40', 'RHL 50', 'RHL 55', 'RHL 53', 'R 40', 'R 50', 'R 55', 'R 70', 'R 90', 'R 100'] },
-  ];
+  const [matriksCarousel, setMatriksCarousel] = useState([]);
   const maxCarouselProducts = 22;
 
   // Data Matriks Short Block — PACKING AREA
-  const matriksPacking = [
-    { varians: 'I', typePacking: 'WITH TATO', equivalent: 'ALL QUALITY', dummy: 'I', ct: 0.47 },
-    { varians: 'II', typePacking: 'WITHOUT TATO', equivalent: 'ALL QUALITY', dummy: 'II', ct: 0.39 },
-    { varians: 'III', typePacking: 'WITHOUT PACKING', equivalent: 'ALL QUALITY', dummy: 'III', ct: 0.15 },
-  ];
+  const [matriksPacking, setMatriksPacking] = useState([]);
 
   // Data OPC Horizontal Machine (8 operasi × 8 Varians + kolom L)
   const horizontalOpcData = [
@@ -174,7 +198,151 @@ const DatabaseCycle = () => {
 
   // ─── CRUD: Tinggi Short Block ───────────────────────────────────────────────
   const user = JSON.parse(localStorage.getItem('user')) || {};
-  const isPPC = user.role === 'PPC';
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [isAddVariansModalOpen, setIsAddVariansModalOpen] = useState(false);
+  const [isEditItemModalOpen, setIsEditItemModalOpen] = useState(false);
+  const [activeItem, setActiveItem] = useState(null);
+  const [activeMachineType, setActiveMachineType] = useState('');
+  
+  const [editForm, setEditForm] = useState({});
+  const [addForm, setAddForm] = useState({});
+  const [addVariansForm, setAddVariansForm] = useState({});
+  const [editItemForm, setEditItemForm] = useState({});
+
+  const openEditModal = (row, machine) => {
+    setActiveItem(row);
+    setActiveMachineType(machine);
+    setEditForm({
+      old_varians: row.fullVarians,
+      new_varians: row.fullVarians,
+      old_base_item: row.base,
+      new_base_item: row.base,
+      cycle_time_menit: row.ct || 0,
+      ct_c1: row.c1 || 0,
+      ct_c2: row.c2 || 0,
+      ct_ptu: row.ptu || 0,
+      ct_pma: row.pma || 0,
+      ct_pmu: row.pmu || 0,
+      ct_c3: row.c3 || 0
+    });
+    setIsEditModalOpen(true);
+  };
+
+  const openAddModal = (row, machine) => {
+    setActiveItem(row);
+    setActiveMachineType(machine);
+    setAddForm({
+      nama_item: '',
+      varians: row.fullVarians,
+      tipe_mesin: machine,
+      cycle_time_menit: row.ct || 0,
+      ct_c1: row.c1 || 0,
+      ct_c2: row.c2 || 0,
+      ct_ptu: row.ptu || 0,
+      ct_pma: row.pma || 0,
+      ct_pmu: row.pmu || 0,
+      ct_c3: row.c3 || 0
+    });
+    setIsAddModalOpen(true);
+  };
+
+  const openAddVariansModal = (machine) => {
+    setActiveMachineType(machine);
+    setAddVariansForm({
+      tipe_mesin: machine,
+      nama_item: '',
+      varians: 'Varians ',
+      cycle_time_menit: 0,
+      ct_c1: 0, ct_c2: 0, ct_ptu: 0, ct_pma: 0, ct_pmu: 0, ct_c3: 0
+    });
+    setIsAddVariansModalOpen(true);
+  };
+
+  const openEditItemModal = (itemName, row, machine) => {
+    setActiveItem(row);
+    setActiveMachineType(machine);
+    setEditItemForm({
+      tipe_mesin: machine,
+      varians: row.fullVarians,
+      old_nama_item: itemName,
+      new_nama_item: itemName
+    });
+    setIsEditItemModalOpen(true);
+  };
+
+  const handleEditSubmit = async (e) => {
+    e.preventDefault();
+    try {
+      await axios.put('http://localhost:5000/api/matrix/varians', {
+        tipe_mesin: activeMachineType,
+        ...editForm
+      });
+      setIsEditModalOpen(false);
+      fetchMatrixData();
+    } catch (error) {
+      alert('Gagal mengupdate varians');
+    }
+  };
+
+  const handleAddSubmit = async (e) => {
+    e.preventDefault();
+    try {
+      await axios.post('http://localhost:5000/api/matrix', addForm);
+      setIsAddModalOpen(false);
+      fetchMatrixData();
+    } catch (error) {
+      alert('Gagal menambah item');
+    }
+  };
+
+  const handleAddVariansSubmit = async (e) => {
+    e.preventDefault();
+    try {
+      await axios.post('http://localhost:5000/api/matrix', addVariansForm);
+      setIsAddVariansModalOpen(false);
+      fetchMatrixData();
+    } catch (error) {
+      alert('Gagal menambah varians baru');
+    }
+  };
+
+  const handleEditItemSubmit = async (e) => {
+    e.preventDefault();
+    try {
+      await axios.put('http://localhost:5000/api/matrix/item', editItemForm);
+      setIsEditItemModalOpen(true);
+      setIsEditItemModalOpen(false);
+      fetchMatrixData();
+    } catch (error) {
+      alert('Gagal mengubah nama item');
+    }
+  };
+
+  const handleDeleteItem = async (itemName, varians, machine) => {
+    if(!window.confirm(`Hapus produk ${itemName} dari ${varians}?`)) return;
+    try {
+      await axios.delete('http://localhost:5000/api/matrix/delete-by-name', {
+        data: { nama_item: itemName, varians: varians, tipe_mesin: machine }
+      });
+      fetchMatrixData();
+    } catch (error) {
+      alert('Gagal menghapus item');
+    }
+  };
+
+  const handleDeleteVarians = async (varians, machine) => {
+    if(!window.confirm(`PERINGATAN: Hapus KESELURUHAN ${varians} beserta isinya?`)) return;
+    try {
+      await axios.delete('http://localhost:5000/api/matrix/varians', {
+        data: { varians: varians, tipe_mesin: machine }
+      });
+      fetchMatrixData();
+    } catch (error) {
+      alert('Gagal menghapus varians');
+    }
+  };
+  const isPPC = user?.role === 'PPC' || user?.role === 'Superadmin';
 
   const STORAGE_KEY = 'tinggi_short_block_data';
 
@@ -305,7 +473,7 @@ const DatabaseCycle = () => {
               <div>
                 <h3 className="font-bold text-navy-dark">Tinggi Short Block (CM)</h3>
                 {isPPC && (
-                  <p className="text-xs text-gray-400 mt-0.5">Kelola data sebagai PPC</p>
+                  <p className="text-xs text-gray-400 mt-0.5">Kelola data (Akses Editor)</p>
                 )}
               </div>
               {isPPC && (
@@ -528,7 +696,9 @@ const DatabaseCycle = () => {
           <div className="bg-blue-50 border border-blue-100 p-4 rounded-lg flex items-center gap-3 text-blue-800 shadow-sm">
             <Database size={20} className="text-accent-blue shrink-0" />
             <span className="text-sm font-semibold">
-              Halaman ini Menampilkan referensi Total Cycle Time dan Operation Process Chart (OPC) untuk area Mesin {activeMachine.charAt(0).toUpperCase() + activeMachine.slice(1)}.
+              {activeMachine === 'packing' 
+                ? "Halaman ini Menampilkan referensi Total Cycle Time untuk area Packing."
+                : `Halaman ini Menampilkan referensi Total Cycle Time dan Operation Process Chart (OPC) untuk area Mesin ${activeMachine.charAt(0).toUpperCase() + activeMachine.slice(1)}.`}
             </span>
           </div>
 
@@ -621,17 +791,50 @@ const DatabaseCycle = () => {
                     <tbody>
                       {matriksVerticalData.map((row, idx) => (
                         <tr key={idx} className="border-b border-gray-100 bg-white hover:bg-gray-50">
-                          <td className="p-2 font-bold border-r border-gray-200">{row.varians}</td>
+                          <td className="p-2 font-bold border-r border-gray-200">
+    <div className="flex items-center justify-between px-1">
+      <span>{row.varians}</span>
+      {user?.role === 'Superadmin' && (
+        <div className="flex gap-1 ml-2">
+          <button onClick={() => openEditModal(row, 'Vertikal')} className="text-blue-600 hover:text-blue-800" title="Edit Cycle Time"><Pencil size={12} /></button>
+          <button onClick={() => openAddModal(row, 'Vertikal')} className="text-green-600 hover:text-green-800" title="Tambah Item"><Plus size={12} /></button>
+        </div>
+      )}
+    </div>
+  </td>
                           <td className="p-2 font-semibold border-r border-gray-200">{row.shortBlock}</td>
                           {[...Array(20)].map((_, i) => {
                             const val = row.equivalents[i];
                             if (val) {
-                              return <td key={i} className="p-1 border-r border-gray-100 whitespace-nowrap min-w-[35px] text-gray-700 font-medium">{val}</td>;
+                              return (
+    <td key={i} className="p-1 border-r border-gray-100 whitespace-nowrap min-w-[35px] text-gray-700 font-medium relative group hover:bg-gray-100">
+      {val}
+      {user?.role === 'Superadmin' && (
+        <button 
+          onClick={() => handleDeleteItem(val, row.fullVarians, 'Vertikal')} 
+          className="absolute top-0 right-0 p-0.5 text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
+          title="Hapus Item"
+        >
+          <X size={10} />
+        </button>
+      )}
+    </td>
+  );
                             } else {
                               return <td key={i} className="p-1 border-r border-gray-100 bg-gray-400 min-w-[35px]"></td>;
                             }
                           })}
-                          <td className="p-2 font-bold border-r border-gray-200">{row.varians}</td>
+                          <td className="p-2 font-bold border-r border-gray-200">
+    <div className="flex items-center justify-between px-1">
+      <span>{row.varians}</span>
+      {user?.role === 'Superadmin' && (
+        <div className="flex gap-1 ml-2">
+          <button onClick={() => openEditModal(row, 'Vertikal')} className="text-blue-600 hover:text-blue-800" title="Edit Cycle Time"><Pencil size={12} /></button>
+          <button onClick={() => openAddModal(row, 'Vertikal')} className="text-green-600 hover:text-green-800" title="Tambah Item"><Plus size={12} /></button>
+        </div>
+      )}
+    </div>
+  </td>
                           <td className="p-2 font-black bg-yellow-200 border-l border-yellow-300 text-navy-dark">{row.ct.toFixed(1)}</td>
                         </tr>
                       ))}
@@ -879,21 +1082,42 @@ const DatabaseCycle = () => {
                     </thead>
                     <tbody>
                       {matriksHorizontal.map((row, idx) => (
-                        <tr key={idx} className="border border-gray-200 bg-white hover:bg-gray-50">
-                          {/* Varians — warna sesuai gambar (biru) */}
-                          <td className="p-2 font-black border border-gray-300 text-blue-600">{row.varians}</td>
+<tr key={idx} className="border border-gray-200 bg-white hover:bg-gray-50">
+                          {/* Varians */}
+                          <td className="p-2 font-black border border-gray-300 text-blue-600">
+                            <div className="flex items-center justify-between px-1">
+                              <span>{row.varians}</span>
+                              {user?.role === 'Superadmin' && (
+                                <div className="flex gap-1 ml-2">
+                                  <button onClick={() => openEditModal(row, 'Horizontal')} className="text-blue-600 hover:text-blue-800" title="Edit Varians"><Pencil size={12} /></button>
+                                  <button onClick={() => handleDeleteVarians(row.fullVarians, 'Horizontal')} className="text-red-500 hover:text-red-700" title="Hapus Varians"><Trash2 size={12} /></button>
+                                  <button onClick={() => openAddModal(row, 'Horizontal')} className="text-green-600 hover:text-green-800" title="Tambah Produk"><Plus size={12} /></button>
+                                </div>
+                              )}
+                            </div>
+                          </td>
                           {/* Short Block Based */}
                           <td className="p-2 font-bold border border-gray-300 text-gray-800 whitespace-nowrap">{row.base}</td>
                           {/* Kolom produk ekuivalen */}
                           {[...Array(maxHorizontalProducts)].map((_, i) => {
                             const val = row.products[i];
-                            return val
-                              ? <td key={i} className="p-1 border border-gray-200 whitespace-nowrap min-w-[38px] text-gray-700 font-semibold">{val}</td>
-                              : <td key={i} className="p-1 border border-gray-200 bg-gray-400 min-w-[38px]"></td>;
+                            return val ? (
+                              <td key={i} className="p-1 border border-gray-200 whitespace-nowrap min-w-[38px] text-gray-700 font-semibold group relative">
+                                {val}
+                                {user?.role === 'Superadmin' && (
+                                  <div className="absolute inset-0 bg-blue-50/90 hidden group-hover:flex items-center justify-center gap-1 transition-all">
+                                    <button onClick={() => openEditItemModal(val, row, 'Horizontal')} className="text-blue-600 hover:text-blue-800 bg-white p-0.5 rounded shadow-sm" title="Edit"><Pencil size={10} /></button>
+                                    <button onClick={() => handleDeleteItem(val, row.fullVarians, 'Horizontal')} className="text-red-500 hover:text-red-700 bg-white p-0.5 rounded shadow-sm" title="Hapus"><Trash2 size={10} /></button>
+                                  </div>
+                                )}
+                              </td>
+                            ) : (
+                              <td key={i} className="p-1 border border-gray-200 bg-gray-400 min-w-[38px]"></td>
+                            );
                           })}
-                          {/* Dummy — warna biru sesuai gambar */}
+                          {/* Dummy */}
                           <td className="p-2 font-black border border-gray-300 text-blue-600">{row.dummy}</td>
-                          {/* Kolom CT — latar kuning */}
+                          {/* Kolom CT */}
                           <td className="p-2 border border-yellow-300 bg-yellow-100 font-bold text-gray-800">{row.c1.toFixed(2)}</td>
                           <td className="p-2 border border-yellow-300 bg-yellow-100 font-bold text-gray-800">{row.c2.toFixed(2)}</td>
                           <td className="p-2 border border-yellow-300 bg-yellow-100 font-bold text-gray-800">{row.ptu.toFixed(2)}</td>
@@ -1147,25 +1371,47 @@ const DatabaseCycle = () => {
                     </thead>
                     <tbody>
                       {matriksCarousel.map((row, idx) => (
-                        <tr key={idx} className="border border-gray-200 bg-white hover:bg-gray-50">
-                          {/* Varians — biru */}
-                          <td className="p-2 font-black border border-gray-300 text-blue-600">{row.varians}</td>
+<tr key={idx} className="border border-gray-200 bg-white hover:bg-gray-50">
+                          {/* Varians */}
+                          <td className="p-2 font-black border border-gray-300 text-blue-600">
+                            <div className="flex items-center justify-between px-1">
+                              <span>{row.varians}</span>
+                              {user?.role === 'Superadmin' && (
+                                <div className="flex gap-1 ml-2">
+                                  <button onClick={() => openEditModal(row, 'Carousel')} className="text-blue-600 hover:text-blue-800" title="Edit Varians"><Pencil size={12} /></button>
+                                  <button onClick={() => handleDeleteVarians(row.fullVarians, 'Carousel')} className="text-red-500 hover:text-red-700" title="Hapus Varians"><Trash2 size={12} /></button>
+                                  <button onClick={() => openAddModal(row, 'Carousel')} className="text-green-600 hover:text-green-800" title="Tambah Produk"><Plus size={12} /></button>
+                                </div>
+                              )}
+                            </div>
+                          </td>
                           {/* Short Block Based */}
                           <td className="p-2 font-bold border border-gray-300 text-gray-800 whitespace-nowrap">{row.base}</td>
                           {/* Kolom produk ekuivalen */}
                           {[...Array(maxCarouselProducts)].map((_, i) => {
                             const val = row.products[i];
-                            return val
-                              ? <td key={i} className="p-1 border border-gray-200 whitespace-nowrap min-w-[38px] text-gray-700 font-semibold">{val}</td>
-                              : <td key={i} className="p-1 border border-gray-200 bg-gray-400 min-w-[38px]"></td>;
+                            return val ? (
+                              <td key={i} className="p-1 border border-gray-200 whitespace-nowrap min-w-[38px] text-gray-700 font-semibold group relative">
+                                {val}
+                                {user?.role === 'Superadmin' && (
+                                  <div className="absolute inset-0 bg-blue-50/90 hidden group-hover:flex items-center justify-center gap-1 transition-all">
+                                    <button onClick={() => openEditItemModal(val, row, 'Carousel')} className="text-blue-600 hover:text-blue-800 bg-white p-0.5 rounded shadow-sm" title="Edit"><Pencil size={10} /></button>
+                                    <button onClick={() => handleDeleteItem(val, row.fullVarians, 'Carousel')} className="text-red-500 hover:text-red-700 bg-white p-0.5 rounded shadow-sm" title="Hapus"><Trash2 size={10} /></button>
+                                  </div>
+                                )}
+                              </td>
+                            ) : (
+                              <td key={i} className="p-1 border border-gray-200 bg-gray-400 min-w-[38px]"></td>
+                            );
                           })}
-                          {/* Dummy — biru */}
+                          {/* Dummy */}
                           <td className="p-2 font-black border border-gray-300 text-blue-600">{row.dummy}</td>
-                          {/* Kolom CT — latar kuning */}
-                          <td className="p-2 border border-yellow-300 bg-yellow-100 font-bold text-gray-800">{row.c1.toFixed(1)}</td>
-                          <td className="p-2 border border-yellow-300 bg-yellow-100 font-bold text-gray-800">{row.c2}</td>
+                          {/* Kolom CT */}
+                          <td className="p-2 border border-yellow-300 bg-yellow-100 font-bold text-gray-800">{row.c1.toFixed(2)}</td>
+                          <td className="p-2 border border-yellow-300 bg-yellow-100 font-bold text-gray-800">{row.c2.toFixed(2)}</td>
                           <td className="p-2 border border-yellow-300 bg-yellow-100 font-bold text-gray-800">{row.ptu.toFixed(2)}</td>
                           <td className="p-2 border border-yellow-300 bg-yellow-100 font-bold text-gray-800">{row.pma.toFixed(1)}</td>
+                          
                           <td className="p-2 border border-yellow-300 bg-yellow-100 font-bold text-gray-800">{row.c3.toFixed(1)}</td>
                         </tr>
                       ))}
@@ -1318,9 +1564,9 @@ const DatabaseCycle = () => {
               <div className="p-5 border-b border-gray-200 bg-gray-50/50 flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <Database size={18} className="text-accent-blue" />
-                  <h3 className="font-bold text-navy-dark">Matriks Short Block</h3>
+                  <h3 className="font-bold text-navy-dark">Matriks Packing</h3>
                   <span className="text-xs text-gray-400 font-medium ml-1">— Packing Area</span>
-                </div>
+                </div>  
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-center border-collapse text-sm">
@@ -1336,7 +1582,17 @@ const DatabaseCycle = () => {
                   <tbody>
                     {matriksPacking.map((row, idx) => (
                       <tr key={idx} className="border-b border-gray-100 bg-white hover:bg-gray-50">
-                        <td className="p-3 font-bold border-r border-gray-200">{row.varians}</td>
+                        <td className="p-3 font-bold border-r border-gray-200">
+                          <div className="flex items-center justify-between px-1">
+                            <span>{row.varians}</span>
+                            {user?.role === 'Superadmin' && (
+                              <div className="flex gap-1 ml-2">
+                                <button onClick={() => openEditModal(row, 'Packing')} className="text-blue-600 hover:text-blue-800" title="Edit Varians"><Pencil size={12} /></button>
+                                <button onClick={() => handleDeleteVarians(row.fullVarians, 'Packing')} className="text-red-500 hover:text-red-700" title="Hapus Varians"><Trash2 size={12} /></button>
+                              </div>
+                            )}
+                          </div>
+                        </td>
                         <td className="p-3 font-semibold border-r border-gray-200 text-navy-dark">{row.typePacking}</td>
                         <td className="p-3 font-medium text-gray-700 border-r border-gray-200">{row.equivalent}</td>
                         <td className="p-3 font-bold border-r border-gray-200">{row.dummy}</td>
@@ -1346,11 +1602,208 @@ const DatabaseCycle = () => {
                   </tbody>
                 </table>
               </div>
+              {user?.role === 'Superadmin' && (
+                <div className="p-3 bg-gray-50 border-t border-gray-200">
+                  <button onClick={() => openAddVariansModal('Packing')} className="flex items-center gap-2 text-sm font-semibold text-green-700 bg-green-100 hover:bg-green-200 px-4 py-2 rounded-lg transition-colors border border-green-200 shadow-sm w-full justify-center">
+                    <Plus size={16} /> Tambah Varians Baru
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </>
       )}
-    </div>
+      {/* ── MODAL EDIT VARIANS ────────────────────────────── */}
+      {isEditModalOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-navy-dark/40 backdrop-blur-sm">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden animate-popup border border-gray-100">
+            <div className="bg-navy-dark p-4 border-b-4 border-accent-blue flex justify-between items-center">
+              <h2 className="text-lg font-bold text-white tracking-wide">Edit Varians ({activeMachineType})</h2>
+              <button onClick={() => setIsEditModalOpen(false)} className="text-white hover:text-accent-blue transition-colors">
+                <X size={20} />
+              </button>
+            </div>
+            
+            <form onSubmit={handleEditSubmit} className="p-6 flex flex-col gap-4">
+              <div className="bg-gray-50 p-3 rounded-lg mb-2">
+                <label className="block text-xs font-semibold text-gray-700 mb-1">Nama Varians</label>
+                <input 
+                  type="text" required
+                  className="w-full p-2 border border-gray-300 rounded focus:ring-1 focus:ring-accent-blue focus:outline-none uppercase"
+                  value={editForm.new_varians}
+                  onChange={(e) => setEditForm({...editForm, new_varians: e.target.value})}
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 mb-1">Nama Base Item / Type Packing</label>
+                <input 
+                  type="text" required
+                  className="w-full p-2 border border-gray-300 rounded focus:ring-1 focus:ring-accent-blue focus:outline-none uppercase"
+                  value={editForm.new_base_item}
+                  onChange={(e) => setEditForm({...editForm, new_base_item: e.target.value})}
+                />
+              </div>
+
+              {(activeMachineType === 'Vertikal' || activeMachineType === 'Packing') ? (
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1">Cycle Time (Menit)</label>
+                  <input 
+                    type="number" step="0.01" required
+                    className="w-full p-2 border border-gray-300 rounded focus:ring-1 focus:ring-accent-blue focus:outline-none"
+                    value={editForm.cycle_time_menit}
+                    onChange={(e) => setEditForm({...editForm, cycle_time_menit: e.target.value})}
+                  />
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 gap-4">
+                  <div><label className="block text-xs font-semibold text-gray-700 mb-1">C1</label><input type="number" step="0.01" className="w-full p-2 border border-gray-300 rounded" value={editForm.ct_c1} onChange={(e) => setEditForm({...editForm, ct_c1: e.target.value})} /></div>
+                  <div><label className="block text-xs font-semibold text-gray-700 mb-1">C2</label><input type="number" step="0.01" className="w-full p-2 border border-gray-300 rounded" value={editForm.ct_c2} onChange={(e) => setEditForm({...editForm, ct_c2: e.target.value})} /></div>
+                  <div><label className="block text-xs font-semibold text-gray-700 mb-1">PTU</label><input type="number" step="0.01" className="w-full p-2 border border-gray-300 rounded" value={editForm.ct_ptu} onChange={(e) => setEditForm({...editForm, ct_ptu: e.target.value})} /></div>
+                  <div><label className="block text-xs font-semibold text-gray-700 mb-1">PMA</label><input type="number" step="0.01" className="w-full p-2 border border-gray-300 rounded" value={editForm.ct_pma} onChange={(e) => setEditForm({...editForm, ct_pma: e.target.value})} /></div>
+                  {activeMachineType === 'Horizontal' && (
+                    <div><label className="block text-xs font-semibold text-gray-700 mb-1">PMU</label><input type="number" step="0.01" className="w-full p-2 border border-gray-300 rounded" value={editForm.ct_pmu} onChange={(e) => setEditForm({...editForm, ct_pmu: e.target.value})} /></div>
+                  )}
+                  <div><label className="block text-xs font-semibold text-gray-700 mb-1">C3</label><input type="number" step="0.01" className="w-full p-2 border border-gray-300 rounded" value={editForm.ct_c3} onChange={(e) => setEditForm({...editForm, ct_c3: e.target.value})} /></div>
+                </div>
+              )}
+
+              <div className="mt-4 flex justify-end gap-2">
+                <button type="button" onClick={() => setIsEditModalOpen(false)} className="px-4 py-2 text-sm font-medium text-gray-600 bg-gray-100 rounded hover:bg-gray-200">Batal</button>
+                <button type="submit" className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded hover:bg-blue-700 flex items-center gap-1"><Check size={14} /> Simpan Perubahan</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── MODAL ADD ITEM EQUIVALENT ────────────────────────────── */}
+      {isAddModalOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-navy-dark/40 backdrop-blur-sm">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden animate-popup border border-gray-100">
+            <div className="bg-navy-dark p-4 border-b-4 border-accent-blue flex justify-between items-center">
+              <h2 className="text-lg font-bold text-white tracking-wide">Tambah Produk ({activeItem?.fullVarians})</h2>
+              <button onClick={() => setIsAddModalOpen(false)} className="text-white hover:text-accent-blue transition-colors">
+                <X size={20} />
+              </button>
+            </div>
+            
+            <form onSubmit={handleAddSubmit} className="p-6 flex flex-col gap-4">
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 mb-1">Nama Produk (Equivalent)</label>
+                <input 
+                  type="text" required placeholder="Misal: D 99"
+                  className="w-full p-2 border border-gray-300 rounded focus:ring-1 focus:ring-accent-blue focus:outline-none uppercase"
+                  value={addForm.nama_item}
+                  onChange={(e) => setAddForm({...addForm, nama_item: e.target.value})}
+                />
+              </div>
+              <div className="bg-gray-50 p-3 rounded-lg border border-gray-100">
+                <p className="text-xs text-gray-500">Item baru ini otomatis akan mewarisi Cycle Time dari varians <strong>{activeItem?.fullVarians}</strong>.</p>
+              </div>
+              <div className="mt-4 flex justify-end gap-2">
+                <button type="button" onClick={() => setIsAddModalOpen(false)} className="px-4 py-2 text-sm font-medium text-gray-600 bg-gray-100 rounded hover:bg-gray-200">Batal</button>
+                <button type="submit" className="px-4 py-2 text-sm font-medium text-white bg-green-600 rounded hover:bg-green-700 flex items-center gap-1"><Check size={14} /> Tambah Item</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── MODAL EDIT ITEM EQUIVALENT ────────────────────────────── */}
+      {isEditItemModalOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-navy-dark/40 backdrop-blur-sm">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden animate-popup border border-gray-100">
+            <div className="bg-navy-dark p-4 border-b-4 border-accent-blue flex justify-between items-center">
+              <h2 className="text-lg font-bold text-white tracking-wide">Edit Nama Produk</h2>
+              <button onClick={() => setIsEditItemModalOpen(false)} className="text-white hover:text-accent-blue transition-colors">
+                <X size={20} />
+              </button>
+            </div>
+            
+            <form onSubmit={handleEditItemSubmit} className="p-6 flex flex-col gap-4">
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 mb-1">Nama Produk (Equivalent)</label>
+                <input 
+                  type="text" required
+                  className="w-full p-2 border border-gray-300 rounded focus:ring-1 focus:ring-accent-blue focus:outline-none uppercase"
+                  value={editItemForm.new_nama_item}
+                  onChange={(e) => setEditItemForm({...editItemForm, new_nama_item: e.target.value})}
+                />
+              </div>
+              <div className="mt-4 flex justify-end gap-2">
+                <button type="button" onClick={() => setIsEditItemModalOpen(false)} className="px-4 py-2 text-sm font-medium text-gray-600 bg-gray-100 rounded hover:bg-gray-200">Batal</button>
+                <button type="submit" className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded hover:bg-blue-700 flex items-center gap-1"><Check size={14} /> Simpan Perubahan</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── MODAL ADD VARIANS ────────────────────────────── */}
+      {isAddVariansModalOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-navy-dark/40 backdrop-blur-sm">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden animate-popup border border-gray-100">
+            <div className="bg-navy-dark p-4 border-b-4 border-accent-blue flex justify-between items-center">
+              <h2 className="text-lg font-bold text-white tracking-wide">Tambah Varians Baru ({activeMachineType})</h2>
+              <button onClick={() => setIsAddVariansModalOpen(false)} className="text-white hover:text-accent-blue transition-colors">
+                <X size={20} />
+              </button>
+            </div>
+            
+            <form onSubmit={handleAddVariansSubmit} className="p-6 flex flex-col gap-4">
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 mb-1">Nama Varians</label>
+                <input 
+                  type="text" required placeholder="Misal: Varians VII"
+                  className="w-full p-2 border border-gray-300 rounded focus:ring-1 focus:ring-accent-blue focus:outline-none uppercase"
+                  value={addVariansForm.varians}
+                  onChange={(e) => setAddVariansForm({...addVariansForm, varians: e.target.value})}
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 mb-1">Nama Base Item / Type Packing</label>
+                <input 
+                  type="text" required placeholder="Misal: D 100"
+                  className="w-full p-2 border border-gray-300 rounded focus:ring-1 focus:ring-accent-blue focus:outline-none uppercase"
+                  value={addVariansForm.nama_item}
+                  onChange={(e) => setAddVariansForm({...addVariansForm, nama_item: e.target.value})}
+                />
+              </div>
+
+              {(activeMachineType === 'Vertikal' || activeMachineType === 'Packing') ? (
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1">Cycle Time (Menit)</label>
+                  <input 
+                    type="number" step="0.01" required
+                    className="w-full p-2 border border-gray-300 rounded focus:ring-1 focus:ring-accent-blue focus:outline-none"
+                    value={addVariansForm.cycle_time_menit}
+                    onChange={(e) => setAddVariansForm({...addVariansForm, cycle_time_menit: e.target.value})}
+                  />
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 gap-4">
+                  <div><label className="block text-xs font-semibold text-gray-700 mb-1">C1</label><input type="number" step="0.01" className="w-full p-2 border border-gray-300 rounded" value={addVariansForm.ct_c1} onChange={(e) => setAddVariansForm({...addVariansForm, ct_c1: e.target.value})} /></div>
+                  <div><label className="block text-xs font-semibold text-gray-700 mb-1">C2</label><input type="number" step="0.01" className="w-full p-2 border border-gray-300 rounded" value={addVariansForm.ct_c2} onChange={(e) => setAddVariansForm({...addVariansForm, ct_c2: e.target.value})} /></div>
+                  <div><label className="block text-xs font-semibold text-gray-700 mb-1">PTU</label><input type="number" step="0.01" className="w-full p-2 border border-gray-300 rounded" value={addVariansForm.ct_ptu} onChange={(e) => setAddVariansForm({...addVariansForm, ct_ptu: e.target.value})} /></div>
+                  <div><label className="block text-xs font-semibold text-gray-700 mb-1">PMA</label><input type="number" step="0.01" className="w-full p-2 border border-gray-300 rounded" value={addVariansForm.ct_pma} onChange={(e) => setAddVariansForm({...addVariansForm, ct_pma: e.target.value})} /></div>
+                  {activeMachineType === 'Horizontal' && (
+                    <div><label className="block text-xs font-semibold text-gray-700 mb-1">PMU</label><input type="number" step="0.01" className="w-full p-2 border border-gray-300 rounded" value={addVariansForm.ct_pmu} onChange={(e) => setAddVariansForm({...addVariansForm, ct_pmu: e.target.value})} /></div>
+                  )}
+                  <div><label className="block text-xs font-semibold text-gray-700 mb-1">C3</label><input type="number" step="0.01" className="w-full p-2 border border-gray-300 rounded" value={addVariansForm.ct_c3} onChange={(e) => setAddVariansForm({...addVariansForm, ct_c3: e.target.value})} /></div>
+                </div>
+              )}
+
+              <div className="mt-4 flex justify-end gap-2">
+                <button type="button" onClick={() => setIsAddVariansModalOpen(false)} className="px-4 py-2 text-sm font-medium text-gray-600 bg-gray-100 rounded hover:bg-gray-200">Batal</button>
+                <button type="submit" className="px-4 py-2 text-sm font-medium text-white bg-green-600 rounded hover:bg-green-700 flex items-center gap-1"><Check size={14} /> Tambah Varians</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+</div>
   );
 };
 

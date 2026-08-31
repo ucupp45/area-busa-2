@@ -53,4 +53,7 @@ router.get('/chart', spkController.getChartData);
 // Rute untuk kalkulasi OEE (Strict Method)
 router.post('/calculate-oee', spkController.calculateOEE);
 
+// Rute untuk mengambil data WO aktif (belum terpenuhi)
+router.get('/wo/active', spkController.getActiveWOs);
+
 module.exports = router;

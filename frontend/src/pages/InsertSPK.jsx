@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
-import { UploadCloud, FileText, CheckCircle, AlertTriangle, Lock, Clock, Calendar, Loader, Download, Activity, Layers, Trash2, Edit2, Check, X, Filter, Search } from 'lucide-react';
+import { UploadCloud, FileText, CheckCircle, AlertTriangle, Lock, Clock, Calendar, Loader, Download, Activity, Layers, Trash2, Edit2, Check, X, Filter, Search, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 
 const InsertSPK = () => {
   const navigate = useNavigate();
@@ -38,6 +38,17 @@ const InsertSPK = () => {
   const [editMesinValue, setEditMesinValue] = useState('');
   const [editPrediksiSbValue, setEditPrediksiSbValue] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
+  
+  // State untuk sorting tabel preview
+  const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc' });
+
+  const requestSort = (key) => {
+    let direction = 'asc';
+    if (sortConfig.key === key && sortConfig.direction === 'asc') {
+      direction = 'desc';
+    }
+    setSortConfig({ key, direction });
+  };
 
   // State untuk tambah baris manual
   const [isAddingRow, setIsAddingRow] = useState(false);
@@ -1101,14 +1112,37 @@ const InsertSPK = () => {
             <table className="w-full text-left border-collapse">
               <thead className="sticky top-0 bg-gray-50 z-10">
                 <tr className="text-gray-500 text-xs uppercase border-b border-gray-200 shadow-sm">
-                  <th className="p-4 font-semibold">No WO / Cust</th>
-                  <th className="p-4 font-semibold">Description</th>
-                  <th className="p-4 font-semibold text-center">Qty Ordered</th>
-                  <th className="p-4 font-semibold text-center">
-                    <div>Kebutuhan SB</div>
-                    <div className="text-[9px] font-normal text-gray-400 normal-case">Σ(T×Qty) ÷ T.Balokan</div>
+                  <th className="p-4 font-semibold cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => requestSort('noWo')}>
+                    <div className="flex items-center gap-1">
+                      No WO / Cust
+                      {sortConfig.key === 'noWo' ? (sortConfig.direction === 'asc' ? <ArrowUp size={14} /> : <ArrowDown size={14} />) : <ArrowUpDown size={14} className="text-gray-400" />}
+                    </div>
                   </th>
-                  <th className="p-4 font-semibold text-center">Match DB</th>
+                  <th className="p-4 font-semibold cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => requestSort('item')}>
+                    <div className="flex items-center gap-1">
+                      Description
+                      {sortConfig.key === 'item' ? (sortConfig.direction === 'asc' ? <ArrowUp size={14} /> : <ArrowDown size={14} />) : <ArrowUpDown size={14} className="text-gray-400" />}
+                    </div>
+                  </th>
+                  <th className="p-4 font-semibold text-center cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => requestSort('qty')}>
+                    <div className="flex items-center justify-center gap-1">
+                      Qty Ordered
+                      {sortConfig.key === 'qty' ? (sortConfig.direction === 'asc' ? <ArrowUp size={14} /> : <ArrowDown size={14} />) : <ArrowUpDown size={14} className="text-gray-400" />}
+                    </div>
+                  </th>
+                  <th className="p-4 font-semibold text-center cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => requestSort('prediksi_sb')}>
+                    <div className="flex items-center justify-center gap-1">
+                      <div>Kebutuhan SB</div>
+                      {sortConfig.key === 'prediksi_sb' ? (sortConfig.direction === 'asc' ? <ArrowUp size={14} /> : <ArrowDown size={14} />) : <ArrowUpDown size={14} className="text-gray-400" />}
+                    </div>
+                    <div className="text-[9px] font-normal text-gray-400 normal-case mt-0.5">Σ(T×Qty) ÷ T.Balokan</div>
+                  </th>
+                  <th className="p-4 font-semibold text-center cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => requestSort('match')}>
+                    <div className="flex items-center justify-center gap-1">
+                      Match DB
+                      {sortConfig.key === 'match' ? (sortConfig.direction === 'asc' ? <ArrowUp size={14} /> : <ArrowDown size={14} />) : <ArrowUpDown size={14} className="text-gray-400" />}
+                    </div>
+                  </th>
                   {!isLocked && <th className="p-4 font-semibold text-center">Aksi</th>}
                 </tr>
               </thead>
@@ -1119,6 +1153,26 @@ const InsertSPK = () => {
                   const wo = row.noWo ? String(row.noWo).toLowerCase() : '';
                   const item = row.item ? String(row.item).toLowerCase() : '';
                   return wo.includes(search) || item.includes(search);
+                }).sort((a, b) => {
+                  if (!sortConfig.key) return 0;
+                  
+                  let aVal = a[sortConfig.key];
+                  let bVal = b[sortConfig.key];
+                  
+                  if (sortConfig.key === 'qty' || sortConfig.key === 'prediksi_sb') {
+                    aVal = Number(aVal) || 0;
+                    bVal = Number(bVal) || 0;
+                  } else if (sortConfig.key === 'match') {
+                    aVal = aVal ? 1 : 0;
+                    bVal = bVal ? 1 : 0;
+                  } else {
+                    aVal = String(aVal || '').toLowerCase();
+                    bVal = String(bVal || '').toLowerCase();
+                  }
+                  
+                  if (aVal < bVal) return sortConfig.direction === 'asc' ? -1 : 1;
+                  if (aVal > bVal) return sortConfig.direction === 'asc' ? 1 : -1;
+                  return 0;
                 }).map((row) => {
                   const idx = row.originalIndex;
                   return (
@@ -1519,7 +1573,7 @@ const InsertSPK = () => {
             </div>
 
             <div className="p-6">
-              <p className="text-gray-700 text-sm whitespace-pre-wrap leading-relaxed">
+              <p className="text-gray-700 text-sm whitespace-pre-wrap leading-relaxed text-center">
                 {modalConfig.message}
               </p>
             </div>
@@ -1598,6 +1652,43 @@ const InsertSPK = () => {
               {/* Tab Content: Vertikal */}
               {activeModalTab === 'Vertikal' && summaryModalData.vertikal && (
                 <div className="mb-6 animate-fade-in">
+                  {/* Summary Card Vertikal */}
+                  {summaryModalData.vertikal.summary && (
+                    <div className="grid grid-cols-1 md:grid-cols-6 gap-4 bg-blue-50/50 p-4 rounded-xl border border-blue-100 mb-6">
+                      <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-100 flex flex-col justify-center items-center text-center">
+                        <span className="text-xs text-gray-500 font-semibold mb-1">Total Shortblock</span>
+                        <span className="text-xl font-black text-orange-500">
+                          {Math.ceil(summaryModalData.vertikal.data?.reduce((sum, r) => sum + (Number(r.kebutuhanSB) || 0), 0) || 0)} <span className="text-sm font-normal">SB</span>
+                        </span>
+                        <span className="text-[10px] text-gray-400 mt-1">
+                          Asli: {(summaryModalData.vertikal.data?.reduce((sum, r) => sum + (Number(r.kebutuhanSB) || 0), 0) || 0).toFixed(2)}
+                        </span>
+                      </div>
+                      <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-100 flex flex-col justify-center items-center text-center">
+                        <span className="text-xs text-gray-500 font-semibold mb-1">Total Waktu</span>
+                        <span className="text-xl font-black text-navy-dark">{summaryModalData.vertikal.summary.totalWaktu} <span className="text-sm font-normal">Mnt</span></span>
+                      </div>
+                      <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-100 flex flex-col justify-center items-center text-center">
+                        <span className="text-xs text-gray-500 font-semibold mb-1">Kapasitas 1 Shift</span>
+                        <span className="text-xl font-black text-gray-700">{summaryModalData.vertikal.summary.kapasitas1Shift} <span className="text-sm font-normal">Mnt</span></span>
+                      </div>
+                      <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-100 flex flex-col justify-center items-center text-center">
+                        <span className="text-xs text-gray-500 font-semibold mb-1">Estimasi Bukaan Mesin</span>
+                        <span className="text-xl font-black text-blue-600">
+                          {summaryModalData.vertikal.summary.estimasiBukaanMesin} <span className="text-gray-400 text-lg">/ {summaryModalData.vertikal.summary.mesinTersedia}</span>
+                        </span>
+                      </div>
+                      <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-100 flex flex-col justify-center items-center text-center">
+                        <span className="text-xs text-gray-500 font-semibold mb-1">Estimasi Operator</span>
+                        <span className="text-xl font-black text-purple-600">{summaryModalData.vertikal.summary.estimasiOperator} <span className="text-sm font-normal">Orang</span></span>
+                      </div>
+                      <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-100 flex flex-col justify-center items-center text-center">
+                        <span className="text-xs text-gray-500 font-semibold mb-1">Utilisasi Mesin</span>
+                        <span className="text-xl font-black text-green-600">{summaryModalData.vertikal.summary.utilisasiMesin}%</span>
+                      </div>
+                    </div>
+                  )}
+
                   <div className="overflow-auto max-h-[50vh] border border-gray-200 rounded-lg mb-6 relative">
                     <table className="w-full text-left border-collapse text-sm">
                       <thead className="bg-gray-50 text-gray-600 sticky top-0 z-10 shadow-[0_1px_0_#e5e7eb]">
@@ -1638,39 +1729,47 @@ const InsertSPK = () => {
                     </table>
                   </div>
 
-                  {/* Summary Card Vertikal */}
-                  {summaryModalData.vertikal.summary && (
-                    <div className="grid grid-cols-1 md:grid-cols-5 gap-4 bg-blue-50/50 p-4 rounded-xl border border-blue-100">
-                      <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-100 flex flex-col justify-center items-center text-center">
-                        <span className="text-xs text-gray-500 font-semibold mb-1">Total Waktu</span>
-                        <span className="text-xl font-black text-navy-dark">{summaryModalData.vertikal.summary.totalWaktu} <span className="text-sm font-normal">Mnt</span></span>
-                      </div>
-                      <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-100 flex flex-col justify-center items-center text-center">
-                        <span className="text-xs text-gray-500 font-semibold mb-1">Kapasitas 1 Shift</span>
-                        <span className="text-xl font-black text-gray-700">{summaryModalData.vertikal.summary.kapasitas1Shift} <span className="text-sm font-normal">Mnt</span></span>
-                      </div>
-                      <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-100 flex flex-col justify-center items-center text-center">
-                        <span className="text-xs text-gray-500 font-semibold mb-1">Estimasi Bukaan Mesin</span>
-                        <span className="text-xl font-black text-blue-600">
-                          {summaryModalData.vertikal.summary.estimasiBukaanMesin} <span className="text-gray-400 text-lg">/ {summaryModalData.vertikal.summary.mesinTersedia}</span>
-                        </span>
-                      </div>
-                      <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-100 flex flex-col justify-center items-center text-center">
-                        <span className="text-xs text-gray-500 font-semibold mb-1">Estimasi Operator</span>
-                        <span className="text-xl font-black text-purple-600">{summaryModalData.vertikal.summary.estimasiOperator} <span className="text-sm font-normal">Orang</span></span>
-                      </div>
-                      <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-100 flex flex-col justify-center items-center text-center">
-                        <span className="text-xs text-gray-500 font-semibold mb-1">Utilisasi Mesin</span>
-                        <span className="text-xl font-black text-green-600">{summaryModalData.vertikal.summary.utilisasiMesin}%</span>
-                      </div>
-                    </div>
-                  )}
+
                 </div>
               )}
 
               {/* Tab Content: Horizontal */}
               {activeModalTab === 'Horizontal' && summaryModalData.horizontal && (
                 <div className="mb-6 animate-fade-in">
+                  {/* Summary Card Horizontal */}
+                  {summaryModalData.horizontal.summary && (
+                    <div className="grid grid-cols-1 md:grid-cols-6 gap-4 bg-orange-50/50 p-4 rounded-xl border border-orange-100 mb-6">
+                      <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-100 flex flex-col justify-center items-center text-center">
+                        <span className="text-xs text-gray-500 font-semibold mb-1">Total Kebutuhan Sheet</span>
+                        <span className="text-xl font-black text-blue-600">
+                          {(summaryModalData.horizontal.summary.totalQty || 0).toLocaleString('id-ID')} <span className="text-sm font-normal">Sheet</span>
+                        </span>
+                      </div>
+                      <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-100 flex flex-col justify-center items-center text-center">
+                        <span className="text-xs text-gray-500 font-semibold mb-1">Total Waktu</span>
+                        <span className="text-xl font-black text-navy-dark">{summaryModalData.horizontal.summary.totalWaktu} <span className="text-sm font-normal">Mnt</span></span>
+                      </div>
+                      <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-100 flex flex-col justify-center items-center text-center">
+                        <span className="text-xs text-gray-500 font-semibold mb-1">Kapasitas 1 Shift</span>
+                        <span className="text-xl font-black text-gray-700">{summaryModalData.horizontal.summary.kapasitas1Shift} <span className="text-sm font-normal">Mnt</span></span>
+                      </div>
+                      <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-100 flex flex-col justify-center items-center text-center">
+                        <span className="text-xs text-gray-500 font-semibold mb-1">Estimasi Bukaan Mesin</span>
+                        <span className="text-xl font-black text-blue-600">
+                          {summaryModalData.horizontal.summary.estimasiBukaanMesin} <span className="text-gray-400 text-lg">/ {summaryModalData.horizontal.summary.mesinTersedia}</span>
+                        </span>
+                      </div>
+                      <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-100 flex flex-col justify-center items-center text-center">
+                        <span className="text-xs text-gray-500 font-semibold mb-1">Estimasi Operator</span>
+                        <span className="text-xl font-black text-purple-600">{summaryModalData.horizontal.summary.estimasiOperator} <span className="text-sm font-normal">Orang</span></span>
+                      </div>
+                      <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-100 flex flex-col justify-center items-center text-center">
+                        <span className="text-xs text-gray-500 font-semibold mb-1">Utilisasi Mesin</span>
+                        <span className="text-xl font-black text-green-600">{summaryModalData.horizontal.summary.utilisasiMesin}%</span>
+                      </div>
+                    </div>
+                  )}
+
                   <div className="overflow-auto max-h-[50vh] border border-gray-200 rounded-lg mb-6 relative">
                     <table className="w-full text-left border-collapse text-sm">
                       <thead className="bg-gray-50 text-gray-600 sticky top-0 z-10 shadow-[0_1px_0_#e5e7eb]">
@@ -1721,39 +1820,47 @@ const InsertSPK = () => {
                     </table>
                   </div>
 
-                  {/* Summary Card Horizontal */}
-                  {summaryModalData.horizontal.summary && (
-                    <div className="grid grid-cols-1 md:grid-cols-5 gap-4 bg-orange-50/50 p-4 rounded-xl border border-orange-100">
-                      <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-100 flex flex-col justify-center items-center text-center">
-                        <span className="text-xs text-gray-500 font-semibold mb-1">Total Waktu</span>
-                        <span className="text-xl font-black text-navy-dark">{summaryModalData.horizontal.summary.totalWaktu} <span className="text-sm font-normal">Mnt</span></span>
-                      </div>
-                      <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-100 flex flex-col justify-center items-center text-center">
-                        <span className="text-xs text-gray-500 font-semibold mb-1">Kapasitas 1 Shift</span>
-                        <span className="text-xl font-black text-gray-700">{summaryModalData.horizontal.summary.kapasitas1Shift} <span className="text-sm font-normal">Mnt</span></span>
-                      </div>
-                      <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-100 flex flex-col justify-center items-center text-center">
-                        <span className="text-xs text-gray-500 font-semibold mb-1">Estimasi Bukaan Mesin</span>
-                        <span className="text-xl font-black text-blue-600">
-                          {summaryModalData.horizontal.summary.estimasiBukaanMesin} <span className="text-gray-400 text-lg">/ {summaryModalData.horizontal.summary.mesinTersedia}</span>
-                        </span>
-                      </div>
-                      <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-100 flex flex-col justify-center items-center text-center">
-                        <span className="text-xs text-gray-500 font-semibold mb-1">Estimasi Operator</span>
-                        <span className="text-xl font-black text-purple-600">{summaryModalData.horizontal.summary.estimasiOperator} <span className="text-sm font-normal">Orang</span></span>
-                      </div>
-                      <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-100 flex flex-col justify-center items-center text-center">
-                        <span className="text-xs text-gray-500 font-semibold mb-1">Utilisasi Mesin</span>
-                        <span className="text-xl font-black text-green-600">{summaryModalData.horizontal.summary.utilisasiMesin}%</span>
-                      </div>
-                    </div>
-                  )}
+
                 </div>
               )}
 
               {/* Tab Content: Carousel */}
               {activeModalTab === 'Carousel' && summaryModalData.carousel && (
                 <div className="mb-6 animate-fade-in">
+                  {/* Summary Card Carousel */}
+                  {summaryModalData.carousel.summary && (
+                    <div className="grid grid-cols-1 md:grid-cols-6 gap-4 bg-teal-50/50 p-4 rounded-xl border border-teal-100 mb-6">
+                      <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-100 flex flex-col justify-center items-center text-center">
+                        <span className="text-xs text-gray-500 font-semibold mb-1">Total Kebutuhan Sheet</span>
+                        <span className="text-xl font-black text-blue-600">
+                          {(summaryModalData.carousel.summary.totalQty || 0).toLocaleString('id-ID')} <span className="text-sm font-normal">Sheet</span>
+                        </span>
+                      </div>
+                      <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-100 flex flex-col justify-center items-center text-center">
+                        <span className="text-xs text-gray-500 font-semibold mb-1">Total Waktu</span>
+                        <span className="text-xl font-black text-navy-dark">{summaryModalData.carousel.summary.totalWaktu} <span className="text-sm font-normal">Mnt</span></span>
+                      </div>
+                      <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-100 flex flex-col justify-center items-center text-center">
+                        <span className="text-xs text-gray-500 font-semibold mb-1">Kapasitas 1 Shift</span>
+                        <span className="text-xl font-black text-gray-700">{summaryModalData.carousel.summary.kapasitas1Shift} <span className="text-sm font-normal">Mnt</span></span>
+                      </div>
+                      <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-100 flex flex-col justify-center items-center text-center">
+                        <span className="text-xs text-gray-500 font-semibold mb-1">Estimasi Bukaan Mesin</span>
+                        <span className="text-xl font-black text-blue-600">
+                          {summaryModalData.carousel.summary.estimasiBukaanMesin} <span className="text-gray-400 text-lg">/ {summaryModalData.carousel.summary.mesinTersedia}</span>
+                        </span>
+                      </div>
+                      <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-100 flex flex-col justify-center items-center text-center">
+                        <span className="text-xs text-gray-500 font-semibold mb-1">Estimasi Operator</span>
+                        <span className="text-xl font-black text-purple-600">{summaryModalData.carousel.summary.estimasiOperator} <span className="text-sm font-normal">Orang</span></span>
+                      </div>
+                      <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-100 flex flex-col justify-center items-center text-center">
+                        <span className="text-xs text-gray-500 font-semibold mb-1">Utilisasi Mesin</span>
+                        <span className="text-xl font-black text-green-600">{summaryModalData.carousel.summary.utilisasiMesin}%</span>
+                      </div>
+                    </div>
+                  )}
+
                   <div className="overflow-auto max-h-[50vh] border border-gray-200 rounded-lg mb-6 relative">
                     <table className="w-full text-left border-collapse text-sm">
                       <thead className="bg-gray-50 text-gray-600 sticky top-0 z-10 shadow-[0_1px_0_#e5e7eb]">
@@ -1802,39 +1909,41 @@ const InsertSPK = () => {
                     </table>
                   </div>
 
-                  {/* Summary Card Carousel */}
-                  {summaryModalData.carousel.summary && (
-                    <div className="grid grid-cols-1 md:grid-cols-5 gap-4 bg-teal-50/50 p-4 rounded-xl border border-teal-100">
-                      <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-100 flex flex-col justify-center items-center text-center">
-                        <span className="text-xs text-gray-500 font-semibold mb-1">Total Waktu</span>
-                        <span className="text-xl font-black text-navy-dark">{summaryModalData.carousel.summary.totalWaktu} <span className="text-sm font-normal">Mnt</span></span>
-                      </div>
-                      <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-100 flex flex-col justify-center items-center text-center">
-                        <span className="text-xs text-gray-500 font-semibold mb-1">Kapasitas 1 Shift</span>
-                        <span className="text-xl font-black text-gray-700">{summaryModalData.carousel.summary.kapasitas1Shift} <span className="text-sm font-normal">Mnt</span></span>
-                      </div>
-                      <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-100 flex flex-col justify-center items-center text-center">
-                        <span className="text-xs text-gray-500 font-semibold mb-1">Estimasi Bukaan Mesin</span>
-                        <span className="text-xl font-black text-blue-600">
-                          {summaryModalData.carousel.summary.estimasiBukaanMesin} <span className="text-gray-400 text-lg">/ {summaryModalData.carousel.summary.mesinTersedia}</span>
-                        </span>
-                      </div>
-                      <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-100 flex flex-col justify-center items-center text-center">
-                        <span className="text-xs text-gray-500 font-semibold mb-1">Estimasi Operator</span>
-                        <span className="text-xl font-black text-purple-600">{summaryModalData.carousel.summary.estimasiOperator} <span className="text-sm font-normal">Orang</span></span>
-                      </div>
-                      <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-100 flex flex-col justify-center items-center text-center">
-                        <span className="text-xs text-gray-500 font-semibold mb-1">Utilisasi Mesin</span>
-                        <span className="text-xl font-black text-green-600">{summaryModalData.carousel.summary.utilisasiMesin}%</span>
-                      </div>
-                    </div>
-                  )}
+
                 </div>
               )}
 
               {/* Tab Content: Packing */}
               {activeModalTab === 'Packing' && summaryModalData.packing && (
                 <div className="mb-6 animate-fade-in">
+                  {/* Summary Card Packing */}
+                  {summaryModalData.packing.summary && (
+                    <div className="grid grid-cols-1 md:grid-cols-5 gap-4 bg-blue-50/50 p-4 rounded-xl border border-blue-100 mb-6">
+                      <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-100 flex flex-col justify-center items-center text-center">
+                        <span className="text-xs text-gray-500 font-semibold mb-1">Total Freq Packing</span>
+                        <span className="text-xl font-black text-purple-600">
+                          {(summaryModalData.packing.data?.reduce((sum, r) => sum + (Number(r.frekuensi) || 0), 0) || 0).toLocaleString('id-ID')}
+                        </span>
+                      </div>
+                      <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-100 flex flex-col justify-center items-center text-center">
+                        <span className="text-xs text-gray-500 font-semibold mb-1">Total Waktu</span>
+                        <span className="text-xl font-black text-navy-dark">{summaryModalData.packing.summary.totalWaktu} <span className="text-sm font-normal">Mnt</span></span>
+                      </div>
+                      <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-100 flex flex-col justify-center items-center text-center">
+                        <span className="text-xs text-gray-500 font-semibold mb-1">Kapasitas 1 Shift</span>
+                        <span className="text-xl font-black text-gray-700">{summaryModalData.packing.summary.kapasitas1Shift} <span className="text-sm font-normal">Mnt</span></span>
+                      </div>
+                      <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-100 flex flex-col justify-center items-center text-center">
+                        <span className="text-xs text-gray-500 font-semibold mb-1">Manpower Packing</span>
+                        <span className="text-xl font-black text-purple-600">{summaryModalData.packing.summary.estimasiOperator} <span className="text-sm font-normal">Orang</span></span>
+                      </div>
+                      <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-100 flex flex-col justify-center items-center text-center">
+                        <span className="text-xs text-gray-500 font-semibold mb-1">Utilisasi Area</span>
+                        <span className="text-xl font-black text-green-600">{summaryModalData.packing.summary.utilisasiMesin}%</span>
+                      </div>
+                    </div>
+                  )}
+
                   <div className="overflow-auto max-h-[50vh] border border-gray-200 rounded-lg mb-6 relative">
                     <table className="w-full text-left border-collapse text-sm">
                       <thead className="bg-gray-50 text-gray-600 sticky top-0 z-10 shadow-[0_1px_0_#e5e7eb]">
@@ -1875,27 +1984,7 @@ const InsertSPK = () => {
                     </table>
                   </div>
 
-                  {/* Summary Card Packing */}
-                  {summaryModalData.packing.summary && (
-                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4 bg-blue-50/50 p-4 rounded-xl border border-blue-100">
-                      <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-100 flex flex-col justify-center items-center text-center">
-                        <span className="text-xs text-gray-500 font-semibold mb-1">Total Waktu</span>
-                        <span className="text-xl font-black text-navy-dark">{summaryModalData.packing.summary.totalWaktu} <span className="text-sm font-normal">Mnt</span></span>
-                      </div>
-                      <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-100 flex flex-col justify-center items-center text-center">
-                        <span className="text-xs text-gray-500 font-semibold mb-1">Kapasitas 1 Shift</span>
-                        <span className="text-xl font-black text-gray-700">{summaryModalData.packing.summary.kapasitas1Shift} <span className="text-sm font-normal">Mnt</span></span>
-                      </div>
-                      <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-100 flex flex-col justify-center items-center text-center">
-                        <span className="text-xs text-gray-500 font-semibold mb-1">Manpower Packing</span>
-                        <span className="text-xl font-black text-purple-600">{summaryModalData.packing.summary.estimasiOperator} <span className="text-sm font-normal">Orang</span></span>
-                      </div>
-                      <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-100 flex flex-col justify-center items-center text-center">
-                        <span className="text-xs text-gray-500 font-semibold mb-1">Utilisasi Area</span>
-                        <span className="text-xl font-black text-green-600">{summaryModalData.packing.summary.utilisasiMesin}%</span>
-                      </div>
-                    </div>
-                  )}
+
                 </div>
               )}
 
