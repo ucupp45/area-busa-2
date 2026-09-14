@@ -3,6 +3,7 @@ import Layout from './components/Layout';
 import Dashboard from './pages/Dashboard';
 import InsertSPK from './pages/InsertSPK';
 import Realisasi from './pages/Realisasi';
+import HasilRealisasi from './pages/HasilRealisasi';
 import Efisiensi from './pages/Efisiensi';
 import ManajemenStok from './pages/ManajemenStok';
 import DatabaseCycle from './pages/DatabaseCycle';
@@ -37,7 +38,8 @@ function App() {
               <Route path="/" element={<Dashboard isAll={true} />} />
               <Route path="/dashboard-terakhir" element={<Dashboard />} />
               <Route path="/insert-spk" element={<InsertSPK />} />
-              <Route path="/realisasi" element={<Realisasi />} />
+              <Route path="/realisasi/input" element={<Realisasi />} />
+              <Route path="/realisasi/hasil" element={<HasilRealisasi />} />
               <Route path="/efisiensi" element={<Efisiensi />} />
               <Route path="/stok" element={<ManajemenStok />} />
               <Route path="/database" element={<Navigate to="/database/vertikal" replace />} />

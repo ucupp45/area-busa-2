@@ -12,6 +12,7 @@ CREATE TABLE IF NOT EXISTS realisasi_identitas (
     asal_t DECIMAL(10,2),
     asal_qty INT,
     keterangan_kondisi TEXT,
+    status VARCHAR(20) DEFAULT 'SUBMITTED',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -57,6 +58,8 @@ CREATE TABLE IF NOT EXISTS realisasi_carousel (
     hasil_qty INT,
     status VARCHAR(20) DEFAULT 'OK',
     alasan_reject TEXT,
+    waste_kulit_p DECIMAL(10,2),
+    waste_kulit_l DECIMAL(10,2),
     waste_kulit_t DECIMAL(10,2),
     waste_kulit_qty INT,
     sispot_p DECIMAL(10,2),
@@ -64,10 +67,15 @@ CREATE TABLE IF NOT EXISTS realisasi_carousel (
     sispot_t DECIMAL(10,2),
     sispot_qty INT,
     sispot_keterangan TEXT,
+    waste_potong_p DECIMAL(10,2),
+    waste_potong_l DECIMAL(10,2),
     waste_potong_t DECIMAL(10,2),
     waste_potong_qty INT,
+    waste_produksi_p DECIMAL(10,2),
+    waste_produksi_l DECIMAL(10,2),
     waste_produksi_t DECIMAL(10,2),
     waste_produksi_qty INT,
+    waste_produksi_keterangan TEXT,
     dt_kode VARCHAR(50),
     dt_jam_awal TIME,
     dt_jam_akhir TIME,

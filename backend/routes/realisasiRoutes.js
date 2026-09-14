@@ -8,6 +8,12 @@ router.post('/', realisasiController.createRealisasi);
 // Ambil semua data realisasi (GET /api/realisasi)
 router.get('/', realisasiController.getAllRealisasi);
 
+// Ambil data analisis vertikal (GET /api/realisasi/hasil/vertikal)
+router.get('/hasil/vertikal', realisasiController.getHasilRealisasiVertikal);
+
+// Ambil data analisis horizontal (GET /api/realisasi/hasil/horizontal)
+router.get('/hasil/horizontal', realisasiController.getHasilRealisasiHorizontal);
+
 // Update data realisasi (PUT /api/realisasi/:id)
 router.put('/:id', realisasiController.updateRealisasi);
 

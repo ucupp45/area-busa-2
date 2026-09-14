@@ -18,24 +18,30 @@ exports.createRealisasi = async (req, res) => {
             dt_kode, dt_jam_awal, dt_jam_akhir, dt_keterangan,
             
             // Level 2 - Carousel/Horizontal (Array of objects)
-            carousel_items
+            carousel_items,
+            status = 'SUBMITTED' // DRAFT atau SUBMITTED
         } = req.body;
 
-        // Validasi Kubikasi (Tinggi)
+        // Validasi Kubikasi (Tinggi) - BYPASS JIKA DRAFT
         let totalDemandT = 0;
-        if (carousel_items && carousel_items.length > 0) {
+        if (status !== 'DRAFT' && carousel_items && carousel_items.length > 0) {
             for (const item of carousel_items) {
-                const itemTotalT = (Number(item.hasil2_t) * Number(item.hasil2_qty)) + 
-                                   Number(item.waste_kulit_t) + 
-                                   Number(item.waste_potong_t) + 
-                                   Number(item.waste_produksi_t) + 
-                                   Number(item.sispot_t);
+                const itemTotalT = (Number(item.hasil2_t || 0) * Number(item.hasil2_qty || 0)) + 
+                                   (Number(item.waste_kulit_t || 0) * Number(item.waste_kulit_qty || 1)) + 
+                                   (Number(item.waste_potong_t || 0) * Number(item.waste_potong_qty || 1)) + 
+                                   (Number(item.waste_produksi_t || 0) * Number(item.waste_produksi_qty || 1)) + 
+                                   (Number(item.sispot_t || 0) * Number(item.sispot_qty || 1));
                 totalDemandT += itemTotalT;
             }
-            if (totalDemandT > Number(hasil_t)) {
+            if (totalDemandT > Number(hasil_t) + 0.01) {
                 await connection.rollback();
                 return res.status(400).json({ 
-                    message: `Kubikasi Gagal: Ketinggian demand (${totalDemandT.toFixed(2)}) melebihi tinggi SB Vertical (${Number(hasil_t).toFixed(2)})` 
+                    message: `Kubikasi Gagal: Ketinggian demand (${totalDemandT.toFixed(2)} cm) melebihi tinggi SB Vertical (${Number(hasil_t).toFixed(2)} cm)` 
+                });
+            } else if (Number(hasil_t) > 0 && totalDemandT < Number(hasil_t) - 0.01) {
+                await connection.rollback();
+                return res.status(400).json({ 
+                    message: `Validasi Gagal: Masih ada sisa ketinggian yang belum terpakai (${(Number(hasil_t) - totalDemandT).toFixed(2)} cm). Sisa ketinggian harus habis terpakai.` 
                 });
             }
         }
@@ -43,11 +49,11 @@ exports.createRealisasi = async (req, res) => {
         // 1. Insert Identitas
         const [identitasResult] = await connection.query(
             `INSERT INTO realisasi_identitas 
-            (kualitas, no_barcode, tanggal, no_spk, nama_operator, shift, grup, asal_p, asal_l, asal_t, asal_qty, keterangan_kondisi) 
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            (kualitas, no_barcode, tanggal, no_spk, nama_operator, shift, grup, asal_p, asal_l, asal_t, asal_qty, keterangan_kondisi, status) 
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             [
                 kualitas || '', no_barcode || '', tanggal || null, no_spk || '', nama_operator || '', shift || '', grup || '',
-                asal_p || 0, asal_l || 0, asal_t || 0, asal_qty || 0, keterangan_kondisi || ''
+                asal_p || 0, asal_l || 0, asal_t || 0, asal_qty || 0, keterangan_kondisi || '', status
             ]
         );
 
@@ -79,12 +85,12 @@ exports.createRealisasi = async (req, res) => {
                 await connection.query(
             `INSERT INTO realisasi_carousel 
             (identitas_id, no_mesin, tipe_mesin, no_disk, no_wo, keterangan, hasil_p, hasil_l, hasil_t, hasil_qty, status, alasan_reject,
-            waste_kulit_t, waste_kulit_qty, 
+            waste_kulit_p, waste_kulit_l, waste_kulit_t, waste_kulit_qty, 
             sispot_p, sispot_l, sispot_t, sispot_qty, sispot_keterangan,
-            waste_potong_t, waste_potong_qty, 
-            waste_produksi_t, waste_produksi_qty,
+            waste_potong_p, waste_potong_l, waste_potong_t, waste_potong_qty, 
+            waste_produksi_p, waste_produksi_l, waste_produksi_t, waste_produksi_qty, waste_produksi_keterangan,
             dt_kode, dt_jam_awal, dt_jam_akhir, dt_keterangan) 
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             [
                 identitasId,
                 item.no_mesin || '',
@@ -94,10 +100,10 @@ exports.createRealisasi = async (req, res) => {
                 item.keterangan || '',
                 item.hasil2_p || 0, item.hasil2_l || 0, item.hasil2_t || 0, item.hasil2_qty || 0,
                 item.status || 'OK', item.alasan_reject || '',
-                item.waste_kulit_t || 0, item.waste_kulit_qty || 0,
+                item.waste_kulit_p || 0, item.waste_kulit_l || 0, item.waste_kulit_t || 0, item.waste_kulit_qty || 0,
                 item.sispot_p || 0, item.sispot_l || 0, item.sispot_t || 0, item.sispot_qty || 0, item.sispot_keterangan || '',
-                item.waste_potong_t || 0, item.waste_potong_qty || 0,
-                item.waste_produksi_t || 0, item.waste_produksi_qty || 0,
+                item.waste_potong_p || 0, item.waste_potong_l || 0, item.waste_potong_t || 0, item.waste_potong_qty || 0,
+                item.waste_produksi_p || 0, item.waste_produksi_l || 0, item.waste_produksi_t || 0, item.waste_produksi_qty || 0, item.waste_produksi_keterangan || '',
                 item.dt_kode || '', item.dt_jam_awal || null, item.dt_jam_akhir || null, item.dt_keterangan || ''
             ]
         );
@@ -120,7 +126,7 @@ exports.getAllRealisasi = async (req, res) => {
         const query = `
             SELECT 
                 i.id, i.kualitas, i.no_barcode, i.tanggal, i.no_spk, i.nama_operator, i.shift, i.grup,
-                i.asal_p, i.asal_l, i.asal_t, i.asal_qty, i.keterangan_kondisi, i.created_at,
+                i.asal_p, i.asal_l, i.asal_t, i.asal_qty, i.keterangan_kondisi, i.status as identitas_status, i.created_at,
                 
                 v.no_mesin as v_no_mesin, v.hasil_p as v_hasil_p, v.hasil_l as v_hasil_l, v.hasil_t as v_hasil_t, v.hasil_qty as v_hasil_qty,
                 v.waste_samping_p, v.waste_samping_l, v.waste_samping_t, v.waste_samping_qty,
@@ -130,10 +136,10 @@ exports.getAllRealisasi = async (req, res) => {
                 
                 c.id as c_id, c.no_mesin as c_no_mesin, c.tipe_mesin, c.no_disk, c.no_wo, c.keterangan as c_keterangan, c.status, c.alasan_reject,
                 c.hasil_p as c_hasil_p, c.hasil_l as c_hasil_l, c.hasil_t as c_hasil_t, c.hasil_qty as c_hasil_qty,
-                c.waste_kulit_t, c.waste_kulit_qty,
+                c.waste_kulit_p, c.waste_kulit_l, c.waste_kulit_t, c.waste_kulit_qty,
                 c.sispot_p, c.sispot_l, c.sispot_t, c.sispot_qty, c.sispot_keterangan,
-                c.waste_potong_t, c.waste_potong_qty,
-                c.waste_produksi_t, c.waste_produksi_qty
+                c.waste_potong_p, c.waste_potong_l, c.waste_potong_t, c.waste_potong_qty,
+                c.waste_produksi_p, c.waste_produksi_l, c.waste_produksi_t, c.waste_produksi_qty, c.waste_produksi_keterangan
             FROM realisasi_identitas i
             LEFT JOIN realisasi_vertical v ON i.id = v.identitas_id
             LEFT JOIN realisasi_carousel c ON i.id = c.identitas_id
@@ -152,8 +158,10 @@ exports.getAllRealisasi = async (req, res) => {
                 // Clean up prefixed c_ fields from root
                 delete newRow.c_id; delete newRow.c_no_mesin; delete newRow.tipe_mesin; delete newRow.no_disk; delete newRow.no_wo; delete newRow.c_keterangan; delete newRow.status; delete newRow.alasan_reject;
                 delete newRow.c_hasil_p; delete newRow.c_hasil_l; delete newRow.c_hasil_t; delete newRow.c_hasil_qty;
-                delete newRow.waste_kulit_t; delete newRow.waste_kulit_qty; delete newRow.sispot_p; delete newRow.sispot_l; delete newRow.sispot_t; delete newRow.sispot_qty; delete newRow.sispot_keterangan;
-                delete newRow.waste_potong_t; delete newRow.waste_potong_qty; delete newRow.waste_produksi_t; delete newRow.waste_produksi_qty;
+                delete newRow.waste_kulit_p; delete newRow.waste_kulit_l; delete newRow.waste_kulit_t; delete newRow.waste_kulit_qty; 
+                delete newRow.sispot_p; delete newRow.sispot_l; delete newRow.sispot_t; delete newRow.sispot_qty; delete newRow.sispot_keterangan;
+                delete newRow.waste_potong_p; delete newRow.waste_potong_l; delete newRow.waste_potong_t; delete newRow.waste_potong_qty; 
+                delete newRow.waste_produksi_p; delete newRow.waste_produksi_l; delete newRow.waste_produksi_t; delete newRow.waste_produksi_qty; delete newRow.waste_produksi_keterangan;
                 
                 map.set(row.id, newRow);
                 grouped.push(newRow);
@@ -173,6 +181,8 @@ exports.getAllRealisasi = async (req, res) => {
                     hasil_l: row.c_hasil_l,
                     hasil_t: row.c_hasil_t,
                     hasil_qty: row.c_hasil_qty,
+                    waste_kulit_p: row.waste_kulit_p,
+                    waste_kulit_l: row.waste_kulit_l,
                     waste_kulit_t: row.waste_kulit_t,
                     waste_kulit_qty: row.waste_kulit_qty,
                     sispot_p: row.sispot_p,
@@ -180,10 +190,15 @@ exports.getAllRealisasi = async (req, res) => {
                     sispot_t: row.sispot_t,
                     sispot_qty: row.sispot_qty,
                     sispot_keterangan: row.sispot_keterangan,
+                    waste_potong_p: row.waste_potong_p,
+                    waste_potong_l: row.waste_potong_l,
                     waste_potong_t: row.waste_potong_t,
                     waste_potong_qty: row.waste_potong_qty,
+                    waste_produksi_p: row.waste_produksi_p,
+                    waste_produksi_l: row.waste_produksi_l,
                     waste_produksi_t: row.waste_produksi_t,
-                    waste_produksi_qty: row.waste_produksi_qty
+                    waste_produksi_qty: row.waste_produksi_qty,
+                    waste_produksi_keterangan: row.waste_produksi_keterangan
                 });
             }
         }
@@ -213,21 +228,29 @@ exports.updateRealisasi = async (req, res) => {
             dt_kode, dt_jam_awal, dt_jam_akhir, dt_keterangan,
             
             // Level 2 - Carousel/Horizontal (Array of objects)
-            carousel_items
+            carousel_items,
+            status = 'SUBMITTED'
         } = req.body;
 
-        // Validasi Kubikasi
+        // Validasi Kubikasi - BYPASS JIKA DRAFT
         let totalDemandT = 0;
-        if (carousel_items && carousel_items.length > 0) {
+        if (status !== 'DRAFT' && carousel_items && carousel_items.length > 0) {
             for (const item of carousel_items) {
                 totalDemandT += (Number(item.hasil2_t || item.hasil_t || 0) * Number(item.hasil2_qty || item.hasil_qty || 0)) + 
-                                Number(item.waste_kulit_t || 0) + Number(item.waste_potong_t || 0) + 
-                                Number(item.waste_produksi_t || 0) + Number(item.sispot_t || 0);
+                                (Number(item.waste_kulit_t || 0) * Number(item.waste_kulit_qty || 1)) + 
+                                (Number(item.waste_potong_t || 0) * Number(item.waste_potong_qty || 1)) + 
+                                (Number(item.waste_produksi_t || 0) * Number(item.waste_produksi_qty || 1)) + 
+                                (Number(item.sispot_t || 0) * Number(item.sispot_qty || 1));
             }
-            if (totalDemandT > Number(hasil_t)) {
+            if (totalDemandT > Number(hasil_t) + 0.01) {
                 await connection.rollback();
                 return res.status(400).json({ 
-                    message: `Kubikasi Gagal: Ketinggian demand (${totalDemandT.toFixed(2)}) melebihi tinggi SB Vertical (${Number(hasil_t).toFixed(2)})` 
+                    message: `Kubikasi Gagal: Ketinggian demand (${totalDemandT.toFixed(2)} cm) melebihi tinggi SB Vertical (${Number(hasil_t).toFixed(2)} cm)` 
+                });
+            } else if (Number(hasil_t) > 0 && totalDemandT < Number(hasil_t) - 0.01) {
+                await connection.rollback();
+                return res.status(400).json({ 
+                    message: `Validasi Gagal: Masih ada sisa ketinggian yang belum terpakai (${(Number(hasil_t) - totalDemandT).toFixed(2)} cm). Sisa ketinggian harus habis terpakai.` 
                 });
             }
         }
@@ -236,10 +259,10 @@ exports.updateRealisasi = async (req, res) => {
         await connection.query(
             `UPDATE realisasi_identitas SET 
             kualitas=?, no_barcode=?, tanggal=?, no_spk=?, nama_operator=?, shift=?, grup=?, 
-            asal_p=?, asal_l=?, asal_t=?, asal_qty=?, keterangan_kondisi=? WHERE id=?`,
+            asal_p=?, asal_l=?, asal_t=?, asal_qty=?, keterangan_kondisi=?, status=? WHERE id=?`,
             [
                 kualitas || '', no_barcode || '', tanggal || null, no_spk || '', nama_operator || '', shift || '', grup || '',
-                asal_p || 0, asal_l || 0, asal_t || 0, asal_qty || 0, keterangan_kondisi || '',
+                asal_p || 0, asal_l || 0, asal_t || 0, asal_qty || 0, keterangan_kondisi || '', status,
                 id
             ]
         );
@@ -269,25 +292,25 @@ exports.updateRealisasi = async (req, res) => {
         if (carousel_items && carousel_items.length > 0) {
             for (const item of carousel_items) {
                 await connection.query(
-                    `INSERT INTO realisasi_carousel 
-                    (identitas_id, no_mesin, tipe_mesin, no_disk, no_wo, keterangan, hasil_p, hasil_l, hasil_t, hasil_qty, status, alasan_reject,
-                    waste_kulit_t, waste_kulit_qty, sispot_p, sispot_l, sispot_t, sispot_qty, sispot_keterangan,
-                    waste_potong_t, waste_potong_qty, waste_produksi_t, waste_produksi_qty,
-                    dt_kode, dt_jam_awal, dt_jam_akhir, dt_keterangan) 
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-                    [
-                        id,
-                        item.no_mesin || '',
-                        item.tipe_mesin || 'Horizontal', item.no_disk || '', item.no_wo || '', item.keterangan || '',
-                        item.hasil2_p || item.hasil_p || 0, item.hasil2_l || item.hasil_l || 0, item.hasil2_t || item.hasil_t || 0, item.hasil2_qty || item.hasil_qty || 0,
-                        item.status || 'OK', item.alasan_reject || '',
-                        item.waste_kulit_t || 0, item.waste_kulit_qty || 0,
-                        item.sispot_p || 0, item.sispot_l || 0, item.sispot_t || 0, item.sispot_qty || 0, item.sispot_keterangan || '',
-                        item.waste_potong_t || 0, item.waste_potong_qty || 0,
-                        item.waste_produksi_t || 0, item.waste_produksi_qty || 0,
-                        item.dt_kode || '', item.dt_jam_awal || null, item.dt_jam_akhir || null, item.dt_keterangan || ''
-                    ]
-                );
+                      `INSERT INTO realisasi_carousel 
+                      (identitas_id, no_mesin, tipe_mesin, no_disk, no_wo, keterangan, hasil_p, hasil_l, hasil_t, hasil_qty, status, alasan_reject,
+                      waste_kulit_p, waste_kulit_l, waste_kulit_t, waste_kulit_qty, sispot_p, sispot_l, sispot_t, sispot_qty, sispot_keterangan,
+                      waste_potong_p, waste_potong_l, waste_potong_t, waste_potong_qty, waste_produksi_p, waste_produksi_l, waste_produksi_t, waste_produksi_qty,
+                      dt_kode, dt_jam_awal, dt_jam_akhir, dt_keterangan) 
+                      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                      [
+                          id,
+                          item.no_mesin || '',
+                          item.tipe_mesin || 'Horizontal', item.no_disk || '', item.no_wo || '', item.keterangan || '',
+                          item.hasil2_p || item.hasil_p || 0, item.hasil2_l || item.hasil_l || 0, item.hasil2_t || item.hasil_t || 0, item.hasil2_qty || item.hasil_qty || 0,
+                          item.status || 'OK', item.alasan_reject || '',
+                          item.waste_kulit_p || 0, item.waste_kulit_l || 0, item.waste_kulit_t || 0, item.waste_kulit_qty || 0,
+                          item.sispot_p || 0, item.sispot_l || 0, item.sispot_t || 0, item.sispot_qty || 0, item.sispot_keterangan || '',
+                          item.waste_potong_p || 0, item.waste_potong_l || 0, item.waste_potong_t || 0, item.waste_potong_qty || 0,
+                          item.waste_produksi_p || 0, item.waste_produksi_l || 0, item.waste_produksi_t || 0, item.waste_produksi_qty || 0, item.waste_produksi_keterangan || '',
+                          item.dt_kode || '', item.dt_jam_awal || null, item.dt_jam_akhir || null, item.dt_keterangan || ''
+                      ]
+                  );
             }
         }
 
@@ -314,5 +337,373 @@ exports.deleteRealisasi = async (req, res) => {
     } catch (error) {
         console.error('[ERROR] deleteRealisasi:', error);
         res.status(500).json({ message: 'Gagal menghapus data realisasi', error: error.message });
+    }
+};
+
+// ====================================================================================
+// ==================== VERTICAL PRODUCTION DATA ANALYZER =============================
+// ====================================================================================
+
+exports.getHasilRealisasiVertikal = async (req, res) => {
+    try {
+        // 1. Fetch realisasi identitas joined with vertical
+        const query = `
+            SELECT 
+                i.id AS identitas_id, i.kualitas, i.no_barcode, i.tanggal, i.no_spk, i.nama_operator, i.shift, i.grup,
+                i.asal_p, i.asal_l, i.asal_t, i.asal_qty,
+                v.id AS vertical_id, v.no_mesin, 
+                v.hasil_p, v.hasil_l, v.hasil_t, v.hasil_qty,
+                v.waste_samping_p, v.waste_samping_l, v.waste_samping_t, v.waste_samping_qty,
+                v.waste_dpn_blk_p, v.waste_dpn_blk_l, v.waste_dpn_blk_t, v.waste_dpn_blk_qty,
+                v.sisa_p, v.sisa_l, v.sisa_t, v.sisa_qty, v.sisa_keterangan
+            FROM realisasi_identitas i
+            JOIN realisasi_vertical v ON i.id = v.identitas_id
+            WHERE i.status != 'DRAFT'
+            ORDER BY i.created_at DESC
+        `;
+        const [rows] = await db.query(query);
+
+        // 2. Fetch CT Matrix for Vertical
+        const [matrixVertikal] = await db.query("SELECT nama_item, cycle_time_menit, varians FROM cycle_time_matrix WHERE tipe_mesin = 'Vertikal'");
+        const sortedVertikal = matrixVertikal.sort((a, b) => b.nama_item.length - a.nama_item.length);
+
+        // 3. Group and Process Logic
+        const groupData = {};
+        const calcVol = (p, l, t, qty) => (Number(p||0) * Number(l||0) * Number(t||0) * Number(qty||0)) / 1000000;
+
+        rows.forEach(row => {
+            if (!groupData[row.identitas_id]) {
+                groupData[row.identitas_id] = {
+                    m3_asal: calcVol(row.asal_p, row.asal_l, row.asal_t, row.asal_qty),
+                    m3_waste_samping: calcVol(row.asal_p, row.asal_t, row.waste_samping_t, row.waste_samping_qty),
+                    m3_waste_depan: calcVol(row.asal_l, row.asal_t, row.waste_dpn_blk_t, row.waste_dpn_blk_qty),
+                    total_m3_demand: 0
+                };
+            }
+            // M3 WO (Using vertical inputs temporarily as requested)
+            const m3_wo = calcVol(row.hasil_p, row.hasil_l, row.hasil_t, row.hasil_qty);
+            groupData[row.identitas_id].total_m3_demand += m3_wo;
+        });
+
+        const results = rows.map(row => {
+            const g = groupData[row.identitas_id];
+            const m3_wo = calcVol(row.hasil_p, row.hasil_l, row.hasil_t, row.hasil_qty);
+            
+            let m3_sisa_potong = g.m3_asal - g.total_m3_demand - g.m3_waste_samping - g.m3_waste_depan;
+            if (m3_sisa_potong < 0) m3_sisa_potong = 0;
+
+            const cleanKualitas = (row.kualitas || '').replace(/\s+/g, '').toLowerCase();
+            const matchedVertikal = sortedVertikal.find(m => cleanKualitas.includes(m.nama_item.replace(/\s+/g, '').toLowerCase()));
+            const baseCT = matchedVertikal ? (parseFloat(matchedVertikal.cycle_time_menit) || 0) : 0;
+            const varians_potong = matchedVertikal ? (matchedVertikal.varians || '-') : '-';
+            
+            const qtyAktual = Number(row.hasil_qty || 0);
+            const summary_ct_aktual = Number((baseCT * qtyAktual).toFixed(2));
+
+            let status_validasi = "PASS";
+            if (g.total_m3_demand > g.m3_asal + 0.00001) {
+                status_validasi = `WARNING - Volume Over-Demand: Kebutuhan WO melebihi dimensi fisik balokan aktual`;
+            }
+
+            return {
+                summary_realisasi_vertical: {
+                    barcode_sb: row.no_barcode,
+                    kualitas_busa: row.kualitas,
+                    varians_potong: varians_potong,
+                    base_ct: baseCT,
+                    summary_ct_aktual: summary_ct_aktual
+                },
+                rincian_kubikasi: {
+                    m3_hasil: Number(m3_wo.toFixed(5)),
+                    m3_waste_samping: Number(g.m3_waste_samping.toFixed(5)),
+                    m3_waste_depan: Number(g.m3_waste_depan.toFixed(5)),
+                    m3_sisa_potong: Number(m3_sisa_potong.toFixed(5))
+                },
+                parameter_tambahan: { downtime: 0, defect: 0 },
+                status_validasi: status_validasi,
+                _raw: {
+                    id: row.identitas_id,
+                    tanggal: row.tanggal,
+                    shift: row.shift,
+                    no_spk: row.no_spk,
+                    carousel_wo: '-',
+                    carousel_mesin: '-',
+                    operator: row.nama_operator,
+                    mesin: row.no_mesin,
+                    keterangan_kondisi: row.keterangan_kondisi,
+                    status: row.identitas_status,
+                    created_at: row.created_at,
+                    asal_m3: Number(g.m3_asal.toFixed(5)),
+                    asal_p: row.asal_p,
+                    asal_l: row.asal_l,
+                    asal_t: row.asal_t,
+                    asal_qty: row.asal_qty,
+                    hasil_p: row.hasil_p,
+                    hasil_l: row.hasil_l,
+                    hasil_t: row.hasil_t,
+                    hasil_qty: row.hasil_qty,
+                    m3_wo: Number(m3_wo.toFixed(5)),
+                    total_m3_demand: Number(g.total_m3_demand.toFixed(5)),
+                    m3_sisa_potong: Number(m3_sisa_potong.toFixed(5)),
+                    status_validasi: status_validasi
+                }
+            };
+        });
+
+        res.json({ success: true, data: results });
+    } catch (error) {
+        console.error('[ERROR] getHasilRealisasiVertikal:', error);
+        res.status(500).json({ success: false, message: 'Gagal mengambil data hasil realisasi vertikal', error: error.message });
+    }
+};
+
+// ====================================================================================
+// ==================== HORIZONTAL PRODUCTION DATA ANALYZER ===========================
+// ====================================================================================
+
+exports.getHasilRealisasiHorizontal = async (req, res) => {
+    try {
+        const query = `
+            SELECT 
+                i.id AS identitas_id, i.kualitas, i.no_barcode, i.tanggal, i.no_spk, i.nama_operator, i.shift, i.grup,
+                i.asal_p, i.asal_l, i.asal_t, i.asal_qty,
+                v.no_mesin AS vertikal_mesin, v.hasil_p AS vertikal_p, v.hasil_l AS vertikal_l, v.hasil_t AS vertikal_t, v.hasil_qty AS vertikal_qty,
+                c.id AS carousel_id, c.tipe_mesin, c.no_mesin, c.no_disk, c.no_wo, c.keterangan,
+                c.hasil_p, c.hasil_l, c.hasil_t, c.hasil_qty, c.status, c.alasan_reject,
+                c.waste_kulit_p, c.waste_kulit_l, c.waste_kulit_t, c.waste_kulit_qty,
+                c.sispot_p, c.sispot_l, c.sispot_t, c.sispot_qty, c.sispot_keterangan,
+                c.waste_potong_p, c.waste_potong_l, c.waste_potong_t, c.waste_potong_qty,
+                c.waste_produksi_p, c.waste_produksi_l, c.waste_produksi_t, c.waste_produksi_qty
+            FROM realisasi_identitas i
+            JOIN realisasi_carousel c ON i.id = c.identitas_id
+            LEFT JOIN realisasi_vertical v ON i.id = v.identitas_id
+            WHERE i.status != 'DRAFT'
+            ORDER BY i.created_at DESC
+        `;
+        const [rows] = await db.query(query);
+
+        const [matrixAll] = await db.query("SELECT * FROM cycle_time_matrix WHERE tipe_mesin IN ('Horizontal', 'Carousel')");
+        const sortedMatrix = matrixAll.sort((a, b) => b.nama_item.length - a.nama_item.length);
+
+        const groupData = {};
+        const calcVol = (p, l, t, qty) => (Number(p||0) * Number(l||0) * Number(t||0) * Number(qty||0)) / 1000000;
+
+        rows.forEach(row => {
+            const tipeMesin = row.tipe_mesin || 'Horizontal'; // Fallback
+            const groupKey = `${row.identitas_id}_${tipeMesin}`;
+
+            if (!groupData[groupKey]) {
+                const cleanKualitas = (row.kualitas || '').replace(/\s+/g, '').toLowerCase();
+                const matched = sortedMatrix.find(m => m.tipe_mesin === tipeMesin && cleanKualitas.includes(m.nama_item.replace(/\s+/g, '').toLowerCase()));
+                
+                const ct_c1 = matched ? (parseFloat(matched.ct_c1) || 0) : 0;
+                const ct_c2 = matched ? (parseFloat(matched.ct_c2) || 0) : 0;
+                const ct_c3 = matched ? (parseFloat(matched.ct_c3) || 0) : 0;
+                const ct_ptu = matched ? (parseFloat(matched.ct_ptu) || 0) : 0;
+                const ct_pma = matched ? (parseFloat(matched.ct_pma) || 0) : 0;
+                const ct_pmu = matched ? (parseFloat(matched.ct_pmu) || 0) : 0;
+                const varians_potong = matched ? (matched.varians || '-') : '-';
+
+                groupData[groupKey] = {
+                    identitas: row,
+                    tipe_mesin: tipeMesin,
+                    m3_asal: calcVol(row.vertikal_p, row.vertikal_l, row.vertikal_t, row.vertikal_qty),
+                    total_m3_hasil: 0,
+                    total_m3_waste_kulit: 0,
+                    total_m3_sispot: 0,
+                    total_m3_waste_potong: 0,
+                    total_m3_waste_produksi: 0,
+                    total_tinggi_demand: 0,
+                    total_qty_hasil: 0,
+                    varians_potong: varians_potong,
+                    ct_c1: ct_c1,
+                    ct_c2: ct_c2,
+                    ct_c3: ct_c3,
+                    ct_ptu: ct_ptu,
+                    ct_pma: ct_pma,
+                    ct_pmu: ct_pmu,
+                    total_sum_ptu: 0,
+                    total_sum_pma: 0,
+                    total_sum_pmu: 0,
+                    demand_list: []
+                };
+            }
+
+            const g = groupData[groupKey];
+            
+            // Kubikasi per WO
+            const m3_wo = calcVol(row.hasil_p, row.hasil_l, row.hasil_t, row.hasil_qty);
+            const m3_wk = calcVol(row.waste_kulit_p, row.waste_kulit_l, row.waste_kulit_t, row.waste_kulit_qty);
+            const m3_sp = calcVol(row.sispot_p, row.sispot_l, row.sispot_t, row.sispot_qty);
+            const m3_wp = calcVol(row.waste_potong_p, row.waste_potong_l, row.waste_potong_t, row.waste_potong_qty);
+            const m3_wpr = calcVol(row.waste_produksi_p, row.waste_produksi_l, row.waste_produksi_t, row.waste_produksi_qty);
+
+            g.total_m3_hasil += m3_wo;
+            g.total_m3_waste_kulit += m3_wk;
+            g.total_m3_sispot += m3_sp;
+            g.total_m3_waste_potong += m3_wp;
+            g.total_m3_waste_produksi += m3_wpr;
+
+            // Tinggi per WO untuk validasi
+            const tinggi_wo = (Number(row.hasil_t || 0) * Number(row.hasil_qty || 0)) + 
+                              (Number(row.waste_kulit_t || 0) * Number(row.waste_kulit_qty || 1)) + 
+                              (Number(row.waste_potong_t || 0) * Number(row.waste_potong_qty || 1)) + 
+                              (Number(row.waste_produksi_t || 0) * Number(row.waste_produksi_qty || 1)) + 
+                              (Number(row.sispot_t || 0) * Number(row.sispot_qty || 1));
+            g.total_tinggi_demand += tinggi_wo;
+
+            // Qty Hasil per WO
+            const qtyHasil = Number(row.hasil_qty || 0);
+            const qtyWk = Number(row.waste_kulit_qty || 0);
+            const qtyWp = Number(row.waste_potong_qty || 0);
+            const qtyWpr = Number(row.waste_produksi_qty || 0);
+            const qtySp = Number(row.sispot_qty || 0);
+
+            g.total_qty_hasil += qtyHasil;
+            g.total_qty_all_cuts = (g.total_qty_all_cuts || 0) + (qtyHasil + qtyWk + qtyWp + qtyWpr + qtySp);
+
+            // Perhitungan CT PTU, PMA, PMU per kategori dalam 1 WO
+            const calcItemCT = (t, qty) => {
+                let ptu = 0, pma = 0, pmu = 0;
+                if (g.tipe_mesin === 'Carousel') {
+                    const qtyAsal = Number(row.vertikal_qty || 1);
+                    const roundupFactor = Math.ceil((qtyAsal / 6) * 100) / 100;
+                    ptu = g.ct_ptu * t * (qty / qtyAsal) * roundupFactor;
+                    pma = g.ct_pma * (qty / qtyAsal) * roundupFactor;
+                    pmu = 0; // Tidak ada PMU untuk carousel
+                } else {
+                    ptu = g.ct_ptu * t * qty;
+                    pma = g.ct_pma * qty;
+                    pmu = g.ct_pmu * qty;
+                }
+                return { ptu, pma, pmu };
+            };
+
+            const ctHasil = calcItemCT(Number(row.hasil_t || 0), qtyHasil);
+            const ctWk = calcItemCT(Number(row.waste_kulit_t || 0), qtyWk);
+            const ctWp = calcItemCT(Number(row.waste_potong_t || 0), qtyWp);
+            const ctWpr = calcItemCT(Number(row.waste_produksi_t || 0), qtyWpr);
+            const ctSp = calcItemCT(Number(row.sispot_t || 0), qtySp);
+
+            g.total_sum_ptu += ctHasil.ptu + ctWk.ptu + ctWp.ptu + ctWpr.ptu + ctSp.ptu;
+            g.total_sum_pma += ctHasil.pma + ctWk.pma + ctWp.pma + ctWpr.pma + ctSp.pma;
+            g.total_sum_pmu += ctHasil.pmu + ctWk.pmu + ctWp.pmu + ctWpr.pmu + ctSp.pmu;
+
+            g.demand_list.push({
+                no_wo: row.no_wo,
+                no_disk: row.no_disk,
+                hasil_p: row.hasil_p,
+                hasil_l: row.hasil_l,
+                hasil_t: row.hasil_t,
+                hasil_qty: row.hasil_qty,
+                m3_wo: Number(m3_wo.toFixed(5)),
+                m3_wk: Number(m3_wk.toFixed(5)),
+                m3_sp: Number(m3_sp.toFixed(5)),
+                m3_wp: Number(m3_wp.toFixed(5)),
+                m3_wpr: Number(m3_wpr.toFixed(5)),
+                no_mesin: row.no_mesin,
+                keterangan: row.keterangan
+            });
+        });
+
+        // Format to array
+        const results = Object.keys(groupData).map(id => {
+            const g = groupData[id];
+            const row = g.identitas;
+
+            let m3_sisa_potong = g.m3_asal - g.total_m3_demand; // as requested: murni asal - wo
+            if (m3_sisa_potong < 0) m3_sisa_potong = 0;
+
+            // Kalkulasi Summary CT
+            const qtyBahanBakuAsal = Number(row.vertikal_qty || 1);
+            const sum_c1 = g.tipe_mesin === 'Carousel' ? Number(g.ct_c1) : g.ct_c1 * qtyBahanBakuAsal;
+            const sum_c2 = g.ct_c2 * qtyBahanBakuAsal;
+            const sum_c3 = g.ct_c3 * qtyBahanBakuAsal;
+            
+            const sum_ptu = g.total_sum_ptu;
+            const sum_pma = g.total_sum_pma;
+            const sum_pmu = g.total_sum_pmu;
+
+            const total_sum_ct = sum_c1 + sum_c2 + sum_ptu + sum_pma + sum_pmu + sum_c3;
+
+            let status_validasi = "PASS";
+            const tinggiAsal = Number(row.vertikal_t || 0);
+            if (g.total_tinggi_demand > tinggiAsal + 0.00001) {
+                status_validasi = `WARNING - Over-Height: Total tinggi demand (${g.total_tinggi_demand.toFixed(2)}) melebihi tinggi Induk (${tinggiAsal.toFixed(2)})`;
+            }
+
+            // Kubikasi details (M3, KG, Pct)
+            const beratJenisMatch = (row.kualitas || '').match(/\d+/);
+            const beratJenis = beratJenisMatch ? parseInt(beratJenisMatch[0], 10) : 0;
+
+            const calcDetail = (m3_val) => {
+                const pct = g.m3_asal > 0 ? (m3_val / g.m3_asal) * 100 : 0;
+                return {
+                    m3: Number(m3_val.toFixed(5)),
+                    kg: Number((m3_val * beratJenis).toFixed(2)),
+                    pct: Number(pct.toFixed(2))
+                };
+            };
+
+            return {
+                summary_realisasi_horizontal: {
+                    tipe_mesin: g.tipe_mesin,
+                    barcode_sb: row.no_barcode,
+                    kualitas_busa: row.kualitas,
+                    varians_potong: g.varians_potong,
+                    total_qty_hasil: g.total_qty_hasil,
+                    base_ct: {
+                        c1: Number(g.ct_c1.toFixed(2)),
+                        c2: Number(g.ct_c2.toFixed(2)),
+                        ptu: Number(g.ct_ptu.toFixed(2)),
+                        pma: Number(g.ct_pma.toFixed(2)),
+                        pmu: Number(g.ct_pmu.toFixed(2)),
+                        c3: Number(g.ct_c3.toFixed(2))
+                    },
+                    summary_ct: {
+                        c1: Number(sum_c1.toFixed(4)),
+                        c2: Number(sum_c2.toFixed(4)),
+                        ptu: Number(sum_ptu.toFixed(4)),
+                        pma: Number(sum_pma.toFixed(4)),
+                        pmu: Number(sum_pmu.toFixed(4)),
+                        c3: Number(sum_c3.toFixed(4))
+                    },
+                    total_sum_ct: Number(total_sum_ct.toFixed(2))
+                },
+                rincian_kubikasi: {
+                    m3_asal: Number(g.m3_asal.toFixed(5)),
+                    hasil: calcDetail(g.total_m3_hasil),
+                    waste_kulit: calcDetail(g.total_m3_waste_kulit),
+                    sispot: calcDetail(g.total_m3_sispot),
+                    waste_potong: calcDetail(g.total_m3_waste_potong),
+                    waste_produksi: calcDetail(g.total_m3_waste_produksi)
+                },
+                demand_list: g.demand_list,
+                status_validasi: status_validasi,
+                _raw: {
+                    id: row.identitas_id,
+                    tanggal: row.tanggal,
+                    shift: row.shift,
+                    no_spk: row.no_spk,
+                    operator: row.nama_operator,
+                    mesin: g.demand_list.length > 0 ? g.demand_list[0].no_mesin : '-',
+                    asal_p: row.asal_p,
+                    asal_l: row.asal_l,
+                    asal_t: row.asal_t,
+                    asal_qty: row.asal_qty,
+                    vertikal_p: row.vertikal_p,
+                    vertikal_l: row.vertikal_l,
+                    vertikal_t: row.vertikal_t,
+                    vertikal_qty: row.vertikal_qty,
+                    vertikal_mesin: row.vertikal_mesin,
+                    total_tinggi_demand: Number(g.total_tinggi_demand.toFixed(2))
+                }
+            };
+        });
+
+        res.json({ success: true, data: results.sort((a, b) => b._raw.id - a._raw.id) });
+    } catch (error) {
+        console.error('[ERROR] getHasilRealisasiHorizontal:', error);
+        res.status(500).json({ success: false, message: 'Gagal mengambil data hasil realisasi horizontal', error: error.message });
     }
 };

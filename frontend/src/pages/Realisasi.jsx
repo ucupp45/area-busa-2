@@ -23,18 +23,26 @@ const downtimeOptions = [
   { value: "O", label: "O: DLL" }
 ];
 
+const operatorOptions = [
+  "Bambang Komala", "Iyan", "Andrian Surya Lesmana", "Dedi Wahyudin",
+  "Muhammad Ridwan", "Andi Rian", "Yanto Irianto", "Henry Gunawan",
+  "Saprijal Rinaldi", "Wahyu Anggara", "Sopandi", "Asep Mulyana B",
+  "Tahyudin", "Edward Syarif Maulana"
+].sort();
+
 const emptyCarouselItem = {
   no_mesin: 'H1',
   tipe_mesin: 'Horizontal',
   no_disk: '',
+  tanggal_wo: '',
   no_wo: '',
   keterangan: '',
   hasil2_p: '', hasil2_l: '', hasil2_t: '', hasil2_qty: '',
   status: 'OK', alasan_reject: '',
-  waste_kulit_t: '', waste_kulit_qty: '',
+  waste_kulit_p: '', waste_kulit_l: '', waste_kulit_t: '', waste_kulit_qty: '',
   sispot_p: '', sispot_l: '', sispot_t: '', sispot_qty: '', sispot_keterangan: '',
-  waste_potong_t: '', waste_potong_qty: '',
-  waste_produksi_t: '', waste_produksi_qty: '',
+  waste_potong_p: '', waste_potong_l: '', waste_potong_t: '', waste_potong_qty: '',
+  waste_produksi_p: '', waste_produksi_l: '', waste_produksi_t: '', waste_produksi_qty: '', waste_produksi_keterangan: '',
   dt_kode: '', dt_jam_awal: '', dt_jam_akhir: '', dt_keterangan: ''
 };
 
@@ -50,7 +58,7 @@ const initialFormState = {
   sisa_p: '', sisa_l: '', sisa_t: '', sisa_qty: '', sisa_keterangan: '',
   dt_kode: '', dt_jam_awal: '', dt_jam_akhir: '', dt_keterangan: '',
   // Carousel Array
-  carousel_items: [ { ...emptyCarouselItem } ]
+  carousel_items: [{ ...emptyCarouselItem }]
 };
 
 const Realisasi = () => {
@@ -61,11 +69,11 @@ const Realisasi = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [notification, setNotification] = useState({ show: false, message: '', type: 'success' });
   const [alertModal, setAlertModal] = useState({ show: false, message: '' });
-  
+
   const [realisasiData, setRealisasiData] = useState([]);
   const [activeWOs, setActiveWOs] = useState([]);
   const [isLoadingData, setIsLoadingData] = useState(false);
-  
+
   const [selectedDetail, setSelectedDetail] = useState(null);
 
   const calculateDurationMinutes = (start, end) => {
@@ -78,8 +86,10 @@ const Realisasi = () => {
   };
 
   const [filterDate, setFilterDate] = useState('');
+  const [filterStatus, setFilterStatus] = useState('ALL'); // 'ALL', 'SUBMITTED', 'DRAFT'
   const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc' });
   const [showScanner, setShowScanner] = useState(false);
+  const [focusedWoIndex, setFocusedWoIndex] = useState(null);
 
   useEffect(() => {
     if (activeTab === 'table') {
@@ -89,12 +99,37 @@ const Realisasi = () => {
     }
   }, [activeTab]);
 
-  const fetchActiveWOs = async () => {
+  const [wosByDate, setWosByDate] = useState({});
+
+  const fetchActiveWOs = async (date = '') => {
+    if (date && wosByDate[date]) return; // cache hit
     try {
-      const res = await axios.get('http://localhost:5000/api/spk/wo/active');
-      setActiveWOs(res.data);
+      const dateParam = date ? `?tanggal=${date}` : '';
+      const res = await axios.get(`http://localhost:5000/api/spk/wo/active${dateParam}`);
+      if (date) {
+        setWosByDate(prev => ({ ...prev, [date]: res.data }));
+      } else {
+        setActiveWOs(res.data);
+      }
     } catch (error) {
       console.error('Error fetching active WOs:', error);
+    }
+  };
+
+  const getAvailableWOs = (currentIndex) => {
+    const itemDate = formData.carousel_items[currentIndex].tanggal_wo;
+    const list = itemDate && wosByDate[itemDate] ? wosByDate[itemDate] : activeWOs;
+
+    const selectedWOs = formData.carousel_items
+      .map((item, idx) => idx !== currentIndex ? item.no_wo : null)
+      .filter(Boolean);
+    return list.filter(wo => !selectedWOs.includes(wo.no_wo));
+  };
+
+  const handleTanggalWoChange = (index, value) => {
+    handleCarouselChange(index, { target: { name: 'tanggal_wo', value } });
+    if (value) {
+      fetchActiveWOs(value); // preload
     }
   };
 
@@ -119,9 +154,13 @@ const Realisasi = () => {
 
   const getProcessedData = () => {
     return [...realisasiData].filter(row => {
+      const currentStatus = row.identitas_status || 'SUBMITTED';
+      if (filterStatus === 'DRAFT' && currentStatus !== 'DRAFT') return false;
+      if (filterStatus === 'SUBMITTED' && currentStatus === 'DRAFT') return false;
+      
       if (!filterDate) return true;
-      const rowDate = new Date(row.tanggal).setHours(0,0,0,0);
-      const targetDate = new Date(filterDate).setHours(0,0,0,0);
+      const rowDate = new Date(row.tanggal).setHours(0, 0, 0, 0);
+      const targetDate = new Date(filterDate).setHours(0, 0, 0, 0);
       return rowDate === targetDate;
     }).sort((a, b) => {
       if (!sortConfig.key) return 0;
@@ -147,7 +186,7 @@ const Realisasi = () => {
       showNotification('Tidak ada data untuk diexport', 'error');
       return;
     }
-    
+
     let exportData = [];
     processedData.forEach(row => {
       if (row.carousel_items && row.carousel_items.length > 0) {
@@ -171,10 +210,10 @@ const Realisasi = () => {
             'No WO (Lv2)': item.no_wo,
             'Status WO': item.status,
             'Alasan Reject': item.alasan_reject,
-            'Lv2 Hasil P': item.hasil_p,
-            'Lv2 Hasil L': item.hasil_l,
-            'Lv2 Hasil T': item.hasil_t,
-            'Lv2 Hasil Qty': item.hasil_qty,
+            'Lv2 Hasil P': item.hasil2_p,
+            'Lv2 Hasil L': item.hasil2_l,
+            'Lv2 Hasil T': item.hasil2_t,
+            'Lv2 Hasil Qty': item.hasil2_qty,
             'Lv2 Waste Kulit T': item.waste_kulit_t,
             'Lv2 Waste Kulit Qty': item.waste_kulit_qty,
             'Lv2 Sispot P': item.sispot_p,
@@ -215,7 +254,29 @@ const Realisasi = () => {
     const { name, value } = e.target;
     setFormData(prev => {
       const updated = { ...prev, [name]: value };
-      
+
+      // Auto-fill logic for Horizontal (Carousel)
+      if (name === 'hasil_p') {
+        updated.carousel_items = updated.carousel_items.map(item => ({
+          ...item,
+          hasil2_p: value,
+          waste_kulit_p: value,
+          waste_potong_p: value,
+          waste_produksi_p: value,
+          sispot_p: value
+        }));
+      }
+      if (name === 'hasil_l') {
+        updated.carousel_items = updated.carousel_items.map(item => ({
+          ...item,
+          hasil2_l: value,
+          waste_kulit_l: value,
+          waste_potong_l: value,
+          waste_produksi_l: value,
+          sispot_l: value
+        }));
+      }
+
       // Auto-fill logic for Waste Vertical Dimensions
       if (['asal_p', 'asal_l', 'asal_t'].includes(name)) {
         if (name === 'asal_p') updated.waste_samping_p = value;
@@ -225,25 +286,148 @@ const Realisasi = () => {
         }
         if (name === 'asal_l') updated.waste_dpn_blk_p = value;
       }
-      
-      // Auto-calculate Sisa Potong
-      const dims = ['p', 'l', 't', 'qty'];
-      dims.forEach(d => {
-        const asal = Number(updated[`asal_${d}`] || 0);
-        const hasil = Number(updated[`hasil_${d}`] || 0);
-        const ws = Number(updated[`waste_samping_${d}`] || 0);
-        const wd = Number(updated[`waste_dpn_blk_${d}`] || 0);
-        const sum = hasil + ws + wd;
-        
-        if (asal > 0 && sum > 0 && asal > sum) {
-          const diff = asal - sum;
-          updated[`sisa_${d}`] = Number.isInteger(diff) ? diff.toString() : diff.toFixed(2);
-        } else if (sum >= asal) {
-          // Kosongkan sisa potong jika jumlah >= asal
-          updated[`sisa_${d}`] = '';
+
+      // Auto-fill logic for Waste Thickness & Qty (Kelipatan 1.5 atau Standar Kulit)
+      if (['asal_p', 'hasil_p', 'asal_l', 'hasil_l', 'hasil_qty'].includes(name)) {
+        const pAsalRaw = Number(updated.asal_p || 0);
+        const pCutRaw = Number(updated.hasil_p || 0);
+        const lAsalRaw = Number(updated.asal_l || 0);
+        const lCutRaw = Number(updated.hasil_l || 0);
+        const qtyCutRaw = Number(updated.hasil_qty || 1);
+
+        // Deteksi arah tumpukan (stacking) Qty
+        let pMultiplier = 1;
+        let lMultiplier = 1;
+
+        if (qtyCutRaw > 1) {
+          if (lCutRaw * qtyCutRaw <= lAsalRaw + 2 && pCutRaw * qtyCutRaw > pAsalRaw + 2) {
+            lMultiplier = qtyCutRaw; // Ditumpuk ke arah Lebar
+          } else if (pCutRaw * qtyCutRaw <= pAsalRaw + 2 && lCutRaw * qtyCutRaw > lAsalRaw + 2) {
+            pMultiplier = qtyCutRaw; // Ditumpuk ke arah Panjang
+          } else {
+            lMultiplier = qtyCutRaw; // Default prioritas ke Lebar jika muat di keduanya
+          }
         }
-      });
-      
+
+        const diffP_raw = Math.round((pAsalRaw - (pCutRaw * pMultiplier)) * 10) / 10;
+
+        if (diffP_raw > 0) {
+          updated.waste_dpn_blk_t = 1.5;
+          if ((diffP_raw * 10) % 15 === 0 && diffP_raw <= 3) {
+            updated.waste_dpn_blk_qty = (diffP_raw / 1.5) * lMultiplier;
+          } else {
+            // Jika ada sisa potong balok besar (> 3cm), asumsikan maksimal 2 kulit dibuang
+            updated.waste_dpn_blk_qty = (diffP_raw >= 3 ? 2 : 1) * lMultiplier;
+          }
+        } else if (pAsalRaw === 0 && pCutRaw === 0) {
+          updated.waste_dpn_blk_t = '';
+          updated.waste_dpn_blk_qty = '';
+        }
+
+        const diffL_raw = Math.round((lAsalRaw - (lCutRaw * lMultiplier)) * 10) / 10;
+
+        if (diffL_raw > 0) {
+          updated.waste_samping_t = 1.5;
+          if ((diffL_raw * 10) % 15 === 0 && diffL_raw <= 3) {
+            updated.waste_samping_qty = (diffL_raw / 1.5) * pMultiplier;
+          } else {
+            // Jika ada sisa potong balok besar (> 3cm), asumsikan maksimal 2 kulit dibuang
+            updated.waste_samping_qty = (diffL_raw >= 3 ? 2 : 1) * pMultiplier;
+          }
+        } else if (lAsalRaw === 0 && lCutRaw === 0) {
+          updated.waste_samping_t = '';
+          updated.waste_samping_qty = '';
+        }
+      }
+
+      // SISPOT Rule Engine
+      const triggerFields = [
+        'asal_p', 'asal_l', 'asal_t',
+        'hasil_p', 'hasil_l', 'hasil_t', 'hasil_qty',
+        'waste_samping_t', 'waste_samping_qty',
+        'waste_dpn_blk_t', 'waste_dpn_blk_qty'
+      ];
+
+      if (triggerFields.includes(name)) {
+        const pAsal = Number(updated.asal_p || 0);
+        const lAsal = Number(updated.asal_l || 0);
+        const tAsal = Number(updated.asal_t || 0);
+
+        const pCut = Number(updated.hasil_p || 0);
+        const lCut = Number(updated.hasil_l || 0);
+        const tCut = Number(updated.hasil_t || 0);
+        const qtyCut = Number(updated.hasil_qty || 1);
+
+        const tWastePanjang = Number(updated.waste_samping_t || 0);
+        const qtyWastePanjang = Number(updated.waste_samping_qty || 0);
+
+        const tWasteLebar = Number(updated.waste_dpn_blk_t || 0);
+        const qtyWasteLebar = Number(updated.waste_dpn_blk_qty || 0);
+
+        // Deteksi arah tumpukan (stacking) Qty untuk perhitungan fisik
+        let pMultiplier = 1;
+        let lMultiplier = 1;
+
+        if (qtyCut > 1) {
+          if (lCut * qtyCut <= lAsal + 2 && pCut * qtyCut > pAsal + 2) {
+            lMultiplier = qtyCut; // Ditumpuk ke arah Lebar
+          } else if (pCut * qtyCut <= pAsal + 2 && lCut * qtyCut > lAsal + 2) {
+            pMultiplier = qtyCut; // Ditumpuk ke arah Panjang
+          } else {
+            lMultiplier = qtyCut; // Default prioritas ke Lebar jika muat di keduanya
+          }
+        }
+
+        // Panjang terpakai = (Panjang potongan * jumlah di sumbu P) + (Tebal waste depan/blk * jumlah waste per baris L)
+        let totalPTerpakai = (pCut * pMultiplier) + (tWasteLebar * (qtyWasteLebar / lMultiplier));
+        // Lebar terpakai = (Lebar potongan * jumlah di sumbu L) + (Tebal waste samping * jumlah waste per baris P)
+        let totalLTerpakai = (lCut * lMultiplier) + (tWastePanjang * (qtyWastePanjang / pMultiplier));
+        const totalTTerpakai = tCut;
+
+        // Perhitungan Selisih (Delta), dibulatkan 2 desimal untuk mencegah JS float issues
+        const round2 = (num) => Math.round(num * 10) / 10;
+        const selisihP = round2(pAsal - totalPTerpakai);
+        const selisihL = round2(lAsal - totalLTerpakai);
+        const selisihT = round2(tAsal - totalTTerpakai);
+
+        // Aturan Logika Sisa Potong
+        // Kondisi A: Tidak Ada Sisa
+        if (selisihP === 0 && selisihL === 0 && selisihT === 0) {
+          if (pAsal === 0 && lAsal === 0 && tAsal === 0) {
+            updated.sisa_p = '';
+            updated.sisa_l = '';
+            updated.sisa_t = '';
+            updated.sisa_qty = '';
+          } else {
+            updated.sisa_p = 0;
+            updated.sisa_l = 0;
+            updated.sisa_t = 0;
+            updated.sisa_qty = 0;
+          }
+        }
+        // Kondisi B: Sisa pada sisi Lebar
+        else if (selisihL > 0 && selisihP === 0) {
+          updated.sisa_p = pAsal > 0 ? pAsal : '';
+          updated.sisa_l = Number.isInteger(selisihL) ? selisihL : selisihL.toFixed(1);
+          updated.sisa_t = tAsal > 0 ? tAsal : '';
+          updated.sisa_qty = 1;
+        }
+        // Kondisi C: Sisa pada sisi Panjang
+        else if (selisihP > 0 && selisihL === 0) {
+          updated.sisa_p = Number.isInteger(selisihP) ? selisihP : selisihP.toFixed(1);
+          updated.sisa_l = lAsal > 0 ? lAsal : '';
+          updated.sisa_t = tAsal > 0 ? tAsal : '';
+          updated.sisa_qty = 1;
+        }
+        // Kondisi Error / Form Dikosongkan: Reset nilai
+        else {
+          updated.sisa_p = '';
+          updated.sisa_l = '';
+          updated.sisa_t = '';
+          updated.sisa_qty = '';
+        }
+      }
+
       return updated;
     });
   };
@@ -252,11 +436,32 @@ const Realisasi = () => {
     const { name, value } = e.target;
     const newItems = [...formData.carousel_items];
     newItems[index][name] = value;
-    
-    // Auto clear no_disk if tipe_mesin is not Carousel
-    if (name === 'tipe_mesin' && value !== 'Carousel') {
-      newItems[index].no_disk = '';
+
+    // Auto-fill down to waste items
+    if (name === 'hasil2_p') {
+      newItems[index].waste_kulit_p = value;
+      newItems[index].waste_potong_p = value;
+      newItems[index].waste_produksi_p = value;
+      newItems[index].sispot_p = value;
     }
+    if (name === 'hasil2_l') {
+      newItems[index].waste_kulit_l = value;
+      newItems[index].waste_potong_l = value;
+      newItems[index].waste_produksi_l = value;
+      newItems[index].sispot_l = value;
+    }
+
+    // Auto clear no_disk and set default no_mesin if tipe_mesin changes
+    if (name === 'tipe_mesin') {
+      if (value === 'Carousel') {
+        newItems[index].no_mesin = 'C1';
+      } else {
+        newItems[index].no_mesin = 'H1';
+        newItems[index].no_disk = '';
+      }
+    }
+
+    // Auto-calculate logic removed to prevent incorrect Sispot autofill
 
     setFormData(prev => ({ ...prev, carousel_items: newItems }));
   };
@@ -264,23 +469,54 @@ const Realisasi = () => {
   const handleWoSelect = (index, value) => {
     const newItems = [...formData.carousel_items];
     newItems[index].no_wo = value;
-    
+
     // Auto fill
     const woData = activeWOs.find(w => w.no_wo === value);
     if (woData) {
       newItems[index].hasil2_t = woData.ukuran_t || '';
       const sisaQty = Number(woData.qty_cutting) - Number(woData.qty_terpenuhi);
       newItems[index].hasil2_qty = sisaQty > 0 ? sisaQty : 0;
+
+      // Sispot auto-fill removed
     }
-    
+
     setFormData(prev => ({ ...prev, carousel_items: newItems }));
   };
 
   const addWO = () => {
-    setFormData(prev => ({
-      ...prev,
-      carousel_items: [...prev.carousel_items, { ...emptyCarouselItem }]
-    }));
+    setFormData(prev => {
+      const newItems = [...prev.carousel_items];
+      const lastIndex = newItems.length - 1;
+      const lastItem = newItems[lastIndex];
+      const newItem = { ...emptyCarouselItem };
+
+      if (lastItem) {
+        // Autofill P & L dari WO sebelumnya, T & Qty dikosongkan (manual input)
+        newItem.hasil2_p = lastItem.hasil2_p;
+        newItem.hasil2_l = lastItem.hasil2_l;
+        newItem.waste_kulit_p = lastItem.waste_kulit_p;
+        newItem.waste_kulit_l = lastItem.waste_kulit_l;
+        newItem.waste_potong_p = lastItem.waste_potong_p;
+        newItem.waste_potong_l = lastItem.waste_potong_l;
+        newItem.waste_produksi_p = lastItem.waste_produksi_p;
+        newItem.waste_produksi_l = lastItem.waste_produksi_l;
+        newItem.sispot_p = lastItem.sispot_p;
+        newItem.sispot_l = lastItem.sispot_l;
+
+        // Mentor logic: Sispot hanya boleh ada di WO terakhir. Hapus Sispot di WO sebelumnya.
+        newItems[lastIndex] = {
+          ...lastItem,
+          sispot_t: '',
+          sispot_qty: '',
+          sispot_keterangan: ''
+        };
+      }
+
+      return {
+        ...prev,
+        carousel_items: [...newItems, newItem]
+      };
+    });
   };
 
   const removeWO = (index) => {
@@ -315,73 +551,99 @@ const Realisasi = () => {
     setShowScanner(false);
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    
-    // Validation Waste Vertical vs Asal Balokan
+  const handleSubmit = async (e, isDraft = false) => {
+    if (e) e.preventDefault();
+
+    const currentStatus = isDraft ? 'DRAFT' : 'SUBMITTED';
+    const submissionData = { ...formData, status: currentStatus };
+
     const errors = [];
-    if (formData.asal_p && Number(formData.waste_samping_p || 0) !== Number(formData.asal_p || 0)) {
-        errors.push("Panjang Waste Samping Kiri Kanan harus sama dengan Panjang Balok Asal.");
-    }
-    if (formData.asal_t && Number(formData.waste_samping_l || 0) !== Number(formData.asal_t || 0)) {
-        errors.push("Lebar Waste Samping Kiri Kanan harus sama dengan Tinggi Balok Asal.");
-    }
-    if (formData.asal_l && Number(formData.waste_dpn_blk_p || 0) !== Number(formData.asal_l || 0)) {
-        errors.push("Panjang Waste Depan Belakang harus sama dengan Lebar Balok Asal.");
-    }
-    if (formData.asal_t && Number(formData.waste_dpn_blk_l || 0) !== Number(formData.asal_t || 0)) {
-        errors.push("Lebar Waste Depan Belakang harus sama dengan Tinggi Balok Asal.");
+
+    // Format Validation
+    if (formData.no_barcode) {
+      if (formData.no_barcode.length !== 10) {
+        errors.push('Panjang Barcode harus tepat 10 karakter.');
+      } else if (!/^\d{6}/.test(formData.no_barcode)) {
+        errors.push('Barcode tidak boleh memiliki huruf pada 6 karakter pertama (karakter 1-6 harus angka).');
+      }
     }
 
-    const dimsMap = { p: 'Panjang', l: 'Lebar', t: 'Tinggi', qty: 'Qty' };
-    ['p', 'l', 't', 'qty'].forEach(d => {
-      const asal = Number(formData[`asal_${d}`] || 0);
-      const hasil = Number(formData[`hasil_${d}`] || 0);
-      const ws = Number(formData[`waste_samping_${d}`] || 0);
-      const wd = Number(formData[`waste_dpn_blk_${d}`] || 0);
-      const sum = hasil + ws + wd;
-      
-      if (asal > 0 && sum > asal) {
-        errors.push(`Total penjumlahan ${dimsMap[d]} (Hasil + Waste) = ${sum} melebihi Balok Asal = ${asal}.`);
+    formData.carousel_items.forEach((item, idx) => {
+      if (item.no_wo && !/^\d{7}$/.test(item.no_wo)) {
+        errors.push(`No WO pada baris ke-${idx + 1} harus berisi tepat 7 digit angka.`);
       }
     });
 
-    if (errors.length > 0) {
-        setAlertModal({ 
-            show: true, 
-            message: `Terdapat ketidaksesuaian data:\n\n- ` + errors.join('\n- ') 
-        });
-        return;
+    // Validation: Total Volume (Kubikasi) Produksi tidak boleh melebihi Volume Balokan Asal
+
+    const getVol = (prefix) => {
+      const p = Number(formData[`${prefix}_p`] || 0);
+      const l = Number(formData[`${prefix}_l`] || 0);
+      const t = Number(formData[`${prefix}_t`] || 0);
+      const qty = Number(formData[`${prefix}_qty`] || 0);
+      return p * l * t * qty;
+    };
+
+    const volAsal = getVol('asal');
+    if (volAsal > 0) {
+      const volHasil = getVol('hasil');
+      const volWasteSamping = getVol('waste_samping');
+      const volWasteDepan = getVol('waste_dpn_blk');
+      const volSisa = getVol('sisa');
+
+      const totalVolProduksi = volHasil + volWasteSamping + volWasteDepan + volSisa;
+
+      // Allow a 2% margin of error (tolerance) for foam elasticity and physical measurement rounding
+      const tolerance = volAsal * 0.02;
+      if (totalVolProduksi > volAsal + tolerance) {
+        errors.push(`Total Volume Produksi (Hasil + Waste + Sisa) = ${totalVolProduksi.toFixed(1)} melebihi Volume Balok Asal = ${volAsal.toFixed(1)} (Batas toleransi pemuaian busa 2% terlampaui).`);
+      }
+    }
+
+    if (!isDraft && errors.length > 0) {
+      setAlertModal({
+        show: true,
+        message: `Terdapat ketidaksesuaian logika pemotongan:\n\n- ` + errors.join('\n- ') + `\n\n(Catatan: Sistem kini menggunakan validasi Volume/Kubikasi total, bukan penjumlahan panjang linear karena metode potong bisa bervariasi.)`
+      });
+      return;
     }
 
     // Front-end Kubikasi Validation
     let totalDemandT = 0;
     formData.carousel_items.forEach(item => {
       totalDemandT += (Number(item.hasil2_t || 0) * Number(item.hasil2_qty || 0)) +
-                      Number(item.waste_kulit_t || 0) +
-                      Number(item.waste_potong_t || 0) +
-                      Number(item.waste_produksi_t || 0) +
-                      Number(item.sispot_t || 0);
+        (Number(item.waste_kulit_t || 0) * Number(item.waste_kulit_qty || 1)) +
+        (Number(item.waste_potong_t || 0) * Number(item.waste_potong_qty || 1)) +
+        (Number(item.waste_produksi_t || 0) * Number(item.waste_produksi_qty || 1)) +
+        (Number(item.sispot_t || 0) * Number(item.sispot_qty || 1));
     });
 
     const sbHeight = Number(formData.hasil_t || 0);
-    
-    if (totalDemandT > sbHeight) {
-      setAlertModal({ 
-        show: true, 
-        message: `Ketinggian total demand WO dan Waste (${totalDemandT.toFixed(2)}) melebihi ketersediaan tinggi SB Vertical (${sbHeight.toFixed(2)}). Mohon cek kembali input Anda.` 
-      });
-      return;
+
+    if (!isDraft) {
+      if (totalDemandT > sbHeight + 0.01) {
+        setAlertModal({
+          show: true,
+          message: `Ketinggian total demand WO dan Waste (${totalDemandT.toFixed(1)} cm) melebihi ketersediaan tinggi SB Vertical (${sbHeight.toFixed(1)} cm). Mohon cek kembali input Anda.`
+        });
+        return;
+      } else if (sbHeight > 0 && totalDemandT < sbHeight - 0.01) {
+        setAlertModal({
+          show: true,
+          message: `Masih ada sisa ketinggian yang belum terpakai (${(sbHeight - totalDemandT).toFixed(1)} cm). Sisa ketinggian harus habis terpakai dan dialokasikan sepenuhnya (ke Hasil, Waste, atau Sispot).`
+        });
+        return;
+      }
     }
 
     setIsSubmitting(true);
     try {
       if (editId) {
-        await axios.put(`http://localhost:5000/api/realisasi/${editId}`, formData);
-        showNotification('Data realisasi berhasil diperbarui!', 'success');
+        await axios.put(`http://localhost:5000/api/realisasi/${editId}`, submissionData);
+        showNotification(isDraft ? 'Draft berhasil diperbarui!' : 'Data realisasi berhasil diperbarui!', 'success');
       } else {
-        await axios.post('http://localhost:5000/api/realisasi', formData);
-        showNotification('Data realisasi berhasil disimpan!', 'success');
+        await axios.post('http://localhost:5000/api/realisasi', submissionData);
+        showNotification(isDraft ? 'Draft berhasil disimpan!' : 'Data realisasi berhasil disimpan!', 'success');
       }
       setFormData(initialFormState);
       setEditId(null);
@@ -395,33 +657,39 @@ const Realisasi = () => {
     }
   };
 
+  const formatNum = (val) => {
+    if (val === null || val === undefined || val === '') return '';
+    const num = Number(val);
+    return Number.isInteger(num) ? num : Number(num.toFixed(1));
+  };
+
   const handleEdit = (row) => {
     const editedForm = {
-      kualitas: row.kualitas || '', no_barcode: row.no_barcode || '', 
-      tanggal: new Date(row.tanggal).toISOString().split('T')[0], 
-      no_spk: row.no_spk || '', nama_operator: row.nama_operator || '', 
+      kualitas: row.kualitas || '', no_barcode: row.no_barcode || '',
+      tanggal: new Date(row.tanggal).toISOString().split('T')[0],
+      no_spk: row.no_spk || '', nama_operator: row.nama_operator || '',
       shift: row.shift || 'Shift 1', grup: row.grup || 'Grup A',
-      asal_p: row.asal_p || '', asal_l: row.asal_l || '', asal_t: row.asal_t || '', asal_qty: row.asal_qty || '', keterangan_kondisi: row.keterangan_kondisi || '',
-      
+      asal_p: formatNum(row.asal_p), asal_l: formatNum(row.asal_l), asal_t: formatNum(row.asal_t), asal_qty: row.asal_qty || '', keterangan_kondisi: row.keterangan_kondisi || '',
+
       no_mesin: row.v_no_mesin || 'V1',
-      hasil_p: row.v_hasil_p || '', hasil_l: row.v_hasil_l || '', hasil_t: row.v_hasil_t || '', hasil_qty: row.v_hasil_qty || '',
-      waste_samping_p: row.waste_samping_p || '', waste_samping_l: row.waste_samping_l || '', waste_samping_t: row.waste_samping_t || '', waste_samping_qty: row.waste_samping_qty || '',
-      waste_dpn_blk_p: row.waste_dpn_blk_p || '', waste_dpn_blk_l: row.waste_dpn_blk_l || '', waste_dpn_blk_t: row.waste_dpn_blk_t || '', waste_dpn_blk_qty: row.waste_dpn_blk_qty || '',
-      sisa_p: row.sisa_p || '', sisa_l: row.sisa_l || '', sisa_t: row.sisa_t || '', sisa_qty: row.sisa_qty || '', sisa_keterangan: row.sisa_keterangan || '',
+      hasil_p: formatNum(row.v_hasil_p), hasil_l: formatNum(row.v_hasil_l), hasil_t: formatNum(row.v_hasil_t), hasil_qty: row.v_hasil_qty || '',
+      waste_samping_p: formatNum(row.waste_samping_p), waste_samping_l: formatNum(row.waste_samping_l), waste_samping_t: formatNum(row.waste_samping_t), waste_samping_qty: row.waste_samping_qty || '',
+      waste_dpn_blk_p: formatNum(row.waste_dpn_blk_p), waste_dpn_blk_l: formatNum(row.waste_dpn_blk_l), waste_dpn_blk_t: formatNum(row.waste_dpn_blk_t), waste_dpn_blk_qty: row.waste_dpn_blk_qty || '',
+      sisa_p: formatNum(row.sisa_p), sisa_l: formatNum(row.sisa_l), sisa_t: formatNum(row.sisa_t), sisa_qty: row.sisa_qty || '', sisa_keterangan: row.sisa_keterangan || '',
       dt_kode: row.dt_kode || '', dt_jam_awal: row.dt_jam_awal || '', dt_jam_akhir: row.dt_jam_akhir || '', dt_keterangan: row.dt_keterangan || '',
-      
+
       carousel_items: row.carousel_items && row.carousel_items.length > 0 ? row.carousel_items.map(c => ({
         no_mesin: c.no_mesin || 'H1',
         tipe_mesin: c.tipe_mesin || 'Horizontal',
         no_disk: c.no_disk || '',
         no_wo: c.no_wo || '',
         keterangan: c.keterangan || '',
-        hasil2_p: c.hasil_p || '', hasil2_l: c.hasil_l || '', hasil2_t: c.hasil_t || '', hasil2_qty: c.hasil_qty || '',
+        hasil2_p: formatNum(c.hasil2_p), hasil2_l: formatNum(c.hasil2_l), hasil2_t: formatNum(c.hasil2_t), hasil2_qty: c.hasil2_qty || '',
         status: c.status || 'OK', alasan_reject: c.alasan_reject || '',
-        waste_kulit_t: c.waste_kulit_t || '', waste_kulit_qty: c.waste_kulit_qty || '',
-        sispot_p: c.sispot_p || '', sispot_l: c.sispot_l || '', sispot_t: c.sispot_t || '', sispot_qty: c.sispot_qty || '', sispot_keterangan: c.sispot_keterangan || '',
-        waste_potong_t: c.waste_potong_t || '', waste_potong_qty: c.waste_potong_qty || '',
-        waste_produksi_t: c.waste_produksi_t || '', waste_produksi_qty: c.waste_produksi_qty || '',
+        waste_kulit_p: formatNum(c.waste_kulit_p), waste_kulit_l: formatNum(c.waste_kulit_l), waste_kulit_t: formatNum(c.waste_kulit_t), waste_kulit_qty: c.waste_kulit_qty || '',
+        sispot_p: formatNum(c.sispot_p), sispot_l: formatNum(c.sispot_l), sispot_t: formatNum(c.sispot_t), sispot_qty: c.sispot_qty || '', sispot_keterangan: c.sispot_keterangan || '',
+        waste_potong_p: formatNum(c.waste_potong_p), waste_potong_l: formatNum(c.waste_potong_l), waste_potong_t: formatNum(c.waste_potong_t), waste_potong_qty: c.waste_potong_qty || '',
+        waste_produksi_p: formatNum(c.waste_produksi_p), waste_produksi_l: formatNum(c.waste_produksi_l), waste_produksi_t: formatNum(c.waste_produksi_t), waste_produksi_qty: c.waste_produksi_qty || '', waste_produksi_keterangan: c.waste_produksi_keterangan || '',
         dt_kode: c.dt_kode || '', dt_jam_awal: c.dt_jam_awal || '', dt_jam_akhir: c.dt_jam_akhir || '', dt_keterangan: c.dt_keterangan || ''
       })) : [{ ...emptyCarouselItem }]
     };
@@ -453,19 +721,130 @@ const Realisasi = () => {
   };
 
   const labelClass = `block text-xs font-semibold mb-1 ${prefs.darkMode ? 'text-gray-300' : 'text-gray-600'}`;
-  const inputClass = `w-full px-3 py-2 border rounded-md text-sm outline-none focus:ring-1 focus:ring-accent-blue transition-all ${
-    prefs.darkMode 
-      ? 'bg-[#1e293b] border-slate-600 text-white focus:border-accent-blue' 
+  const inputClass = `w-full px-3 py-2 border rounded-md text-sm outline-none focus:ring-1 focus:ring-accent-blue transition-all ${prefs.darkMode
+      ? 'bg-[#1e293b] border-slate-600 text-white focus:border-accent-blue'
       : 'bg-white border-gray-300 text-gray-800 focus:border-accent-blue'
-  }`;
+    }`;
+
+  // Kalkulasi max Qty untuk mesin Vertical berdasarkan Kubikasi
+  const pAsal = Number(formData.asal_p || 0);
+  const lAsal = Number(formData.asal_l || 0);
+  const tAsal = Number(formData.asal_t || 0);
+  const volAsal = pAsal * lAsal * tAsal;
+
+  const pHasil = Number(formData.hasil_p || 0);
+  const lHasil = Number(formData.hasil_l || 0);
+  const tHasil = Number(formData.hasil_t || 0);
+  const volHasil = pHasil * lHasil * tHasil;
+
+  const maxQtyVertical = volHasil > 0 ? Math.floor(volAsal / volHasil) : 0;
+  const isQtyVerticalOver = volHasil > 0 && Number(formData.hasil_qty || 0) > maxQtyVertical;
+
+  const getSisaInputClass = () => {
+    const { sisa_p, sisa_l, sisa_t, sisa_qty, sisa_keterangan } = formData;
+    if (sisa_p === '' && sisa_l === '' && sisa_t === '' && sisa_qty === '') return inputClass;
+
+    if (sisa_p === 0 && sisa_l === 0 && sisa_t === 0 && sisa_qty === 0) {
+      return `${inputClass} border-green-500 bg-green-50 text-green-700 font-bold focus:border-green-600 focus:ring-green-500 dark:bg-green-900/30 dark:border-green-500`;
+    }
+
+    const isSisaKeteranganEmpty = !sisa_keterangan || sisa_keterangan.trim() === '';
+    if (!isSisaKeteranganEmpty) {
+      return `${inputClass} border-green-500 bg-green-50 text-green-700 font-bold focus:border-green-600 focus:ring-green-500 dark:bg-green-900/30 dark:border-green-500`;
+    }
+
+    return `${inputClass} border-red-500 bg-red-50 text-red-700 font-bold focus:border-red-600 focus:ring-red-500 dark:bg-red-900/30 dark:border-red-500`;
+  };
+  const sisaColorClass = getSisaInputClass();
+
+  const getSisaTinggiGlobal = () => {
+    let totalUsed = 0;
+    formData.carousel_items.forEach(item => {
+      totalUsed += (Number(item.hasil2_t || 0) * Number(item.hasil2_qty || 0)) +
+        (Number(item.waste_kulit_t || 0) * Number(item.waste_kulit_qty || 1)) +
+        (Number(item.waste_potong_t || 0) * Number(item.waste_potong_qty || 1)) +
+        (Number(item.waste_produksi_t || 0) * Number(item.waste_produksi_qty || 1)) +
+        (Number(item.sispot_t || 0) * Number(item.sispot_qty || 1));
+    });
+    return Number(formData.hasil_t || 0) - totalUsed;
+  };
+  const sisaTinggiGlobal = getSisaTinggiGlobal();
+  const isSisaZero = sisaTinggiGlobal <= 0.001;
+
+  const getPLProps = (val, basePlaceholder, tVal) => {
+    const isTValEmpty = tVal === '' || tVal === null || tVal === undefined;
+    const forceZero = isTValEmpty && isSisaZero;
+
+    if (forceZero) {
+      return {
+        value: '',
+        readOnly: true,
+        className: `${inputClass} bg-emerald-100 dark:bg-emerald-900/20 border-emerald-400 text-emerald-700 font-bold placeholder-emerald-500`,
+        placeholder: '0'
+      };
+    }
+
+    return {
+      className: inputClass,
+      placeholder: basePlaceholder
+    };
+  };
+
+  const getTProps = (val) => {
+    const isValEmpty = val === '' || val === null || val === undefined;
+    const forceZero = isValEmpty && isSisaZero;
+
+    if (forceZero) {
+      return {
+        value: '',
+        readOnly: true,
+        className: `${inputClass} bg-emerald-100 dark:bg-emerald-900/20 border-emerald-400 text-emerald-700 font-bold placeholder-emerald-500`,
+        placeholder: '0'
+      };
+    }
+
+    return {
+      className: inputClass,
+      placeholder: `Max: ${sisaTinggiGlobal.toFixed(1)}`
+    };
+  };
+
+  const getQtyProps = (tVal, qtyVal) => {
+    const isQtyEmpty = qtyVal === '' || qtyVal === null || qtyVal === undefined;
+    const isTValEmpty = tVal === '' || tVal === null || tVal === undefined;
+    const forceZero = isTValEmpty && isSisaZero;
+
+    if (forceZero) {
+      return {
+        value: '',
+        readOnly: true,
+        className: `${inputClass} bg-emerald-100 dark:bg-emerald-900/20 border-emerald-400 text-emerald-700 font-bold placeholder-emerald-500`,
+        placeholder: '0'
+      };
+    }
+
+    const tNum = Number(tVal || 0);
+    const sisaBeforeThis = sisaTinggiGlobal + (tNum * 1);
+    const suggestQty = tNum > 0 ? Math.floor(sisaBeforeThis / tNum) : 0;
+
+    return {
+      readOnly: false,
+      className: inputClass,
+      placeholder: isQtyEmpty && suggestQty > 0 ? `Saran: ${suggestQty}` : 'Qty'
+    };
+  };
+
+  const hasSisaPotong = Number(formData.sisa_p || 0) > 0 || Number(formData.sisa_l || 0) > 0 || Number(formData.sisa_t || 0) > 0 || Number(formData.sisa_qty || 0) > 0;
+  const isSisaKeteranganEmpty = !formData.sisa_keterangan || formData.sisa_keterangan.trim() === '';
+  const isBagianIIILocked = hasSisaPotong && isSisaKeteranganEmpty;
 
   return (
     <div className="flex flex-col gap-6 animate-in fade-in duration-300 relative">
-      
+
       {showScanner && (
-        <DocumentScannerModal 
-          onScan={parseOCRText} 
-          onClose={() => setShowScanner(false)} 
+        <DocumentScannerModal
+          onScan={parseOCRText}
+          onClose={() => setShowScanner(false)}
         />
       )}
 
@@ -481,7 +860,7 @@ const Realisasi = () => {
           </p>
         </div>
         <div className="flex gap-2 p-1 bg-white/10 rounded-lg">
-          <button onClick={() => { setActiveTab('input'); if(activeTab !== 'input' && !editId) setFormData(initialFormState); }} className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-semibold transition-all ${activeTab === 'input' ? 'bg-accent-blue text-navy-dark shadow' : 'text-gray-300 hover:text-white hover:bg-white/5'}`}>
+          <button onClick={() => { setActiveTab('input'); if (activeTab !== 'input' && !editId) setFormData(initialFormState); }} className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-semibold transition-all ${activeTab === 'input' ? 'bg-accent-blue text-navy-dark shadow' : 'text-gray-300 hover:text-white hover:bg-white/5'}`}>
             <PlusCircle size={16} /> Form Input
           </button>
           <button onClick={() => { setActiveTab('table'); setEditId(null); setFormData(initialFormState); }} className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-semibold transition-all ${activeTab === 'table' ? 'bg-accent-blue text-navy-dark shadow' : 'text-gray-300 hover:text-white hover:bg-white/5'}`}>
@@ -504,7 +883,7 @@ const Realisasi = () => {
       {/* TAB CONTENT: INPUT FORM */}
       {activeTab === 'input' && (
         <form onSubmit={handleSubmit} className="flex flex-col gap-6">
-          
+
           {/* SECTION 1: IDENTITAS */}
           <div className={`rounded-xl shadow-sm border overflow-hidden ${prefs.darkMode ? 'bg-[#0f172a] border-slate-700' : 'bg-white border-gray-200'}`}>
             <div className={`p-4 border-b font-bold flex justify-between items-center gap-2 ${prefs.darkMode ? 'border-slate-700 bg-slate-800 text-white' : 'border-gray-200 bg-gray-50 text-navy-dark'}`}>
@@ -515,18 +894,39 @@ const Realisasi = () => {
             </div>
             <div className="p-6 grid grid-cols-1 md:grid-cols-4 gap-6">
               <div><label className={labelClass}>Kualitas</label><input required type="text" name="kualitas" value={formData.kualitas} onChange={handleChange} className={inputClass} placeholder="Contoh: LBR R 100" /></div>
-              <div><label className={labelClass}>No Barcode</label><input required type="text" name="no_barcode" value={formData.no_barcode} onChange={handleChange} className={inputClass} /></div>
+              <div>
+                <label className={labelClass}>No Barcode</label>
+                <input 
+                  required 
+                  type="text" 
+                  name="no_barcode" 
+                  value={formData.no_barcode} 
+                  onChange={handleChange} 
+                  className={`${inputClass} ${formData.no_barcode && formData.no_barcode.length > 10 ? 'border-red-500 focus:ring-red-500 bg-red-50 dark:bg-red-900/20' : ''}`} 
+                />
+                {formData.no_barcode && formData.no_barcode.length > 10 && (
+                  <span className="text-red-500 text-xs mt-1 block font-medium">Warning: Barcode tidak boleh lebih dari 10 digit.</span>
+                )}
+              </div>
               <div><label className={labelClass}>Tanggal</label><input required type="date" name="tanggal" value={formData.tanggal} onChange={handleChange} className={inputClass} /></div>
               <div><label className={labelClass}>No SPK</label><input required type="text" name="no_spk" value={formData.no_spk} onChange={handleChange} className={inputClass} /></div>
-              
-              <div><label className={labelClass}>Nama Operator</label><input required type="text" name="nama_operator" value={formData.nama_operator} onChange={handleChange} className={inputClass} /></div>
+
               <div>
-                <label className={labelClass}>Shift</label>
-                <select name="shift" value={formData.shift} onChange={handleChange} className={inputClass}>
-                  <option value="Shift 1">Shift 1</option>
-                  <option value="Shift 2">Shift 2</option>
-                  <option value="Shift 3">Shift 3</option>
-                </select>
+                <label className={labelClass}>Nama Operator</label>
+                {(formData.nama_operator && !operatorOptions.includes(formData.nama_operator)) || formData.nama_operator === 'Lainnya' ? (
+                  <div className="flex gap-2">
+                    <input required type="text" name="nama_operator" value={formData.nama_operator === 'Lainnya' ? '' : formData.nama_operator} onChange={handleChange} className={inputClass} placeholder="Ketik nama manual..." autoFocus />
+                    <button type="button" onClick={() => setFormData({ ...formData, nama_operator: '' })} className={`px-3 flex items-center justify-center rounded-lg border transition-colors ${prefs.darkMode ? 'bg-slate-700 hover:bg-slate-600 border-slate-600' : 'bg-gray-100 hover:bg-gray-200 border-gray-300'}`} title="Batal / Kembali Pilih">
+                      <X size={16} className="text-gray-500 dark:text-gray-400" />
+                    </button>
+                  </div>
+                ) : (
+                  <select required name="nama_operator" value={formData.nama_operator} onChange={handleChange} className={inputClass}>
+                    <option value="" disabled>Pilih Operator...</option>
+                    {operatorOptions.map(op => <option key={op} value={op}>{op}</option>)}
+                    <option value="Lainnya">-- Lainnya (Ketik Manual) --</option>
+                  </select>
+                )}
               </div>
               <div>
                 <label className={labelClass}>Grup</label>
@@ -536,17 +936,25 @@ const Realisasi = () => {
                   <option value="Grup C">Grup C</option>
                 </select>
               </div>
+              <div>
+                <label className={labelClass}>Shift</label>
+                <select name="shift" value={formData.shift} onChange={handleChange} className={inputClass}>
+                  <option value="Shift 1">Shift 1</option>
+                  <option value="Shift 2">Shift 2</option>
+                  <option value="Shift 3">Shift 3</option>
+                </select>
+              </div>
 
               <div className="md:col-span-2">
                 <label className={labelClass}>Ukuran Asal (P x L x T x Qty)</label>
                 <div className="flex gap-2">
-                  <input type="number" step="0.01" name="asal_p" value={formData.asal_p} onChange={handleChange} placeholder="P" className={inputClass} />
-                  <input type="number" step="0.01" name="asal_l" value={formData.asal_l} onChange={handleChange} placeholder="L" className={inputClass} />
-                  <input type="number" step="0.01" name="asal_t" value={formData.asal_t} onChange={handleChange} placeholder="T" className={inputClass} />
+                  <input type="number" step="any" name="asal_p" value={formData.asal_p} onChange={handleChange} placeholder="P" className={inputClass} />
+                  <input type="number" step="any" name="asal_l" value={formData.asal_l} onChange={handleChange} placeholder="L" className={inputClass} />
+                  <input type="number" step="any" name="asal_t" value={formData.asal_t} onChange={handleChange} placeholder="T" className={inputClass} />
                   <input type="number" name="asal_qty" value={formData.asal_qty} onChange={handleChange} placeholder="Qty" className={inputClass} />
                 </div>
               </div>
-              
+
               <div className="md:col-span-2"><label className={labelClass}>Keterangan Kondisi Busa</label><textarea name="keterangan_kondisi" value={formData.keterangan_kondisi} onChange={handleChange} className={`${inputClass} h-10`} placeholder="Jebol/Sobek/dll" /></div>
             </div>
           </div>
@@ -557,7 +965,7 @@ const Realisasi = () => {
               Bagian II: Proses Level 1 - Mesin Vertical (Potongan Awal/Slab)
             </div>
             <div className="p-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-              
+
               <div className="col-span-1">
                 <label className={labelClass}>No Mesin</label>
                 <select name="no_mesin" value={formData.no_mesin} onChange={handleChange} className={inputClass}>
@@ -568,19 +976,22 @@ const Realisasi = () => {
               <div className="col-span-1 lg:col-span-3">
                 <label className={labelClass}>Hasil Cutting (P x L x T x Qty)</label>
                 <div className="grid grid-cols-4 gap-2">
-                  <input required type="number" step="0.01" name="hasil_p" value={formData.hasil_p} onChange={handleChange} placeholder="P" className={inputClass} />
-                  <input required type="number" step="0.01" name="hasil_l" value={formData.hasil_l} onChange={handleChange} placeholder="L" className={inputClass} />
-                  <input required type="number" step="0.01" name="hasil_t" value={formData.hasil_t} onChange={handleChange} placeholder="T (SB)" title="Tinggi Short Block" className={`${inputClass} border-blue-500 font-bold`} />
-                  <input required type="number" name="hasil_qty" value={formData.hasil_qty} onChange={handleChange} placeholder="Qty" className={inputClass} />
+                  <input required type="number" step="any" name="hasil_p" value={formData.hasil_p} onChange={handleChange} placeholder="P" className={inputClass} />
+                  <input required type="number" step="any" name="hasil_l" value={formData.hasil_l} onChange={handleChange} placeholder="L" className={inputClass} />
+                  <input required type="number" step="any" name="hasil_t" value={formData.hasil_t} onChange={handleChange} placeholder="T (SB)" title="Tinggi Short Block" className={`${inputClass} border-blue-500 font-bold`} />
+                  <input required type="number" name="hasil_qty" value={formData.hasil_qty} onChange={handleChange} placeholder="Qty" className={`${inputClass} ${isQtyVerticalOver ? 'border-red-500 ring-1 ring-red-500' : ''}`} />
                 </div>
+                {isQtyVerticalOver && (
+                  <p className="text-xs text-red-500 font-bold mt-1 text-right">⚠️ Maks Qty (Kubikasi): {maxQtyVertical}</p>
+                )}
               </div>
-              
+
               <div className="col-span-1 lg:col-span-2">
                 <label className={labelClass}>Waste Samping Kiri Kanan (P x L x T x Qty)</label>
                 <div className="grid grid-cols-4 gap-2">
-                  <input type="number" step="0.01" name="waste_samping_p" value={formData.waste_samping_p} onChange={handleChange} placeholder="P" title="Auto: = Panjang Asal" className={`${inputClass} border-amber-300`} />
-                  <input type="number" step="0.01" name="waste_samping_l" value={formData.waste_samping_l} onChange={handleChange} placeholder="L" title="Auto: = Tinggi Asal" className={`${inputClass} border-amber-300`} />
-                  <input type="number" step="0.01" name="waste_samping_t" value={formData.waste_samping_t} onChange={handleChange} placeholder="T" className={inputClass} />
+                  <input type="number" step="any" name="waste_samping_p" value={formData.waste_samping_p} onChange={handleChange} placeholder="P" title="Auto: = Panjang Asal" className={`${inputClass} border-amber-300`} />
+                  <input type="number" step="any" name="waste_samping_l" value={formData.waste_samping_l} onChange={handleChange} placeholder="L" title="Auto: = Tinggi Asal" className={`${inputClass} border-amber-300`} />
+                  <input type="number" step="any" name="waste_samping_t" value={formData.waste_samping_t} onChange={handleChange} placeholder="T" className={inputClass} />
                   <input type="number" name="waste_samping_qty" value={formData.waste_samping_qty} onChange={handleChange} placeholder="Qty" className={inputClass} />
                 </div>
               </div>
@@ -588,9 +999,9 @@ const Realisasi = () => {
               <div className="col-span-1 lg:col-span-2">
                 <label className={labelClass}>Waste Depan Belakang (P x L x T x Qty)</label>
                 <div className="grid grid-cols-4 gap-2">
-                  <input type="number" step="0.01" name="waste_dpn_blk_p" value={formData.waste_dpn_blk_p} onChange={handleChange} placeholder="P" title="Auto: = Lebar Asal" className={`${inputClass} border-amber-300`} />
-                  <input type="number" step="0.01" name="waste_dpn_blk_l" value={formData.waste_dpn_blk_l} onChange={handleChange} placeholder="L" title="Auto: = Tinggi Asal" className={`${inputClass} border-amber-300`} />
-                  <input type="number" step="0.01" name="waste_dpn_blk_t" value={formData.waste_dpn_blk_t} onChange={handleChange} placeholder="T" className={inputClass} />
+                  <input type="number" step="any" name="waste_dpn_blk_p" value={formData.waste_dpn_blk_p} onChange={handleChange} placeholder="P" title="Auto: = Lebar Asal" className={`${inputClass} border-amber-300`} />
+                  <input type="number" step="any" name="waste_dpn_blk_l" value={formData.waste_dpn_blk_l} onChange={handleChange} placeholder="L" title="Auto: = Tinggi Asal" className={`${inputClass} border-amber-300`} />
+                  <input type="number" step="any" name="waste_dpn_blk_t" value={formData.waste_dpn_blk_t} onChange={handleChange} placeholder="T" className={inputClass} />
                   <input type="number" name="waste_dpn_blk_qty" value={formData.waste_dpn_blk_qty} onChange={handleChange} placeholder="Qty" className={inputClass} />
                 </div>
               </div>
@@ -598,19 +1009,19 @@ const Realisasi = () => {
               <div className="col-span-1 lg:col-span-2">
                 <label className={labelClass}>Sisa Potongan (P x L x T x Qty)</label>
                 <div className="grid grid-cols-4 gap-2">
-                  <input type="number" step="0.01" name="sisa_p" value={formData.sisa_p} onChange={handleChange} placeholder="P" className={inputClass} />
-                  <input type="number" step="0.01" name="sisa_l" value={formData.sisa_l} onChange={handleChange} placeholder="L" className={inputClass} />
-                  <input type="number" step="0.01" name="sisa_t" value={formData.sisa_t} onChange={handleChange} placeholder="T" className={inputClass} />
-                  <input type="number" name="sisa_qty" value={formData.sisa_qty} onChange={handleChange} placeholder="Qty" className={inputClass} />
+                  <input type="number" step="any" name="sisa_p" value={formData.sisa_p} onChange={handleChange} placeholder="P" className={sisaColorClass} />
+                  <input type="number" step="any" name="sisa_l" value={formData.sisa_l} onChange={handleChange} placeholder="L" className={sisaColorClass} />
+                  <input type="number" step="any" name="sisa_t" value={formData.sisa_t} onChange={handleChange} placeholder="T" className={sisaColorClass} />
+                  <input type="number" name="sisa_qty" value={formData.sisa_qty} onChange={handleChange} placeholder="Qty" className={sisaColorClass} />
                 </div>
-                <input type="text" name="sisa_keterangan" value={formData.sisa_keterangan} onChange={handleChange} placeholder="Keterangan Sisa Potongan..." className={`${inputClass} mt-2`} />
+                <input type="text" name="sisa_keterangan" value={formData.sisa_keterangan} onChange={handleChange} placeholder="Keterangan Sisa Potongan..." className={`${sisaColorClass} mt-2`} />
               </div>
 
               <div className="col-span-1 lg:col-span-2 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg shadow-sm">
                 <label className={`${labelClass} text-red-700 dark:text-red-400 font-bold flex items-center gap-2 mb-2`}>
                   <AlertCircle size={16} /> Downtime (Kode, Jam, Ket)
                 </label>
-                <div className="grid grid-cols-5 gap-2">
+                <div className="grid grid-cols-4 gap-2">
                   <select name="dt_kode" value={formData.dt_kode} onChange={handleChange} className={`${inputClass} col-span-1`}>
                     <option value="">Kode</option>
                     {downtimeOptions.map((opt, i) => (
@@ -620,7 +1031,7 @@ const Realisasi = () => {
                   <input type="time" name="dt_jam_awal" value={formData.dt_jam_awal} onChange={handleChange} className={`${inputClass} col-span-1`} />
                   <input type="time" name="dt_jam_akhir" value={formData.dt_jam_akhir} onChange={handleChange} className={`${inputClass} col-span-1`} />
                   <input type="text" value={calculateDurationMinutes(formData.dt_jam_awal, formData.dt_jam_akhir)} readOnly placeholder="Durasi" className={`${inputClass} col-span-1 bg-white/50 font-bold text-center text-red-600 dark:text-red-400`} />
-                  <input type="text" name="dt_keterangan" value={formData.dt_keterangan} onChange={handleChange} placeholder="Keterangan..." className={`${inputClass} col-span-1`} />
+                  <input type="text" name="dt_keterangan" value={formData.dt_keterangan} onChange={handleChange} placeholder="Keterangan..." className={`${inputClass} col-span-4`} />
                 </div>
               </div>
 
@@ -628,26 +1039,84 @@ const Realisasi = () => {
           </div>
 
           {/* SECTION 3: CAROUSEL / HORIZONTAL MULTI-WO */}
-          <div className={`rounded-xl shadow-sm border overflow-hidden ${prefs.darkMode ? 'bg-[#0f172a] border-slate-700' : 'bg-white border-gray-200'}`}>
-            <div className={`p-4 border-b font-bold flex items-center justify-between gap-2 ${prefs.darkMode ? 'border-slate-700 bg-slate-800 text-white' : 'border-gray-200 bg-gray-50 text-navy-dark'}`}>
-              <span>Bagian III: Proses Level 2 (Horizontal / Carousel) - Multi WO</span>
-              <button type="button" onClick={addWO} className="flex items-center gap-1 text-xs px-3 py-1 bg-accent-blue text-navy-dark rounded hover:bg-opacity-80">
+          <div className={`rounded-xl shadow-sm border overflow-hidden relative ${prefs.darkMode ? 'bg-[#0f172a] border-slate-700' : 'bg-white border-gray-200'}`}>
+            {isBagianIIILocked && (
+              <div className="absolute inset-0 z-20 flex items-center justify-center bg-white/60 dark:bg-[#0f172a]/60 backdrop-blur-sm">
+                <div className="bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400 font-bold px-6 py-4 rounded-xl shadow-lg border border-red-200 dark:border-red-800 flex items-center gap-3 animate-in fade-in zoom-in">
+                  <AlertCircle size={24} />
+                  Mohon isi "Keterangan Sisa Potongan" di Bagian II terlebih dahulu untuk membuka kunci.
+                </div>
+              </div>
+            )}
+            <div className={`p-4 border-b flex flex-wrap items-center justify-between gap-2 ${prefs.darkMode ? 'border-slate-700 bg-slate-800 text-white' : 'border-gray-200 bg-gray-50 text-navy-dark'}`}>
+              <div className="flex items-center gap-4">
+                <span className="font-bold">Bagian III: Proses Level 2 (Horizontal / Carousel) - Multi WO</span>
+                <span className={`text-xs px-2 py-1 rounded font-bold border ${(() => {
+                    let totalUsed = 0;
+                    formData.carousel_items.forEach(item => {
+                      totalUsed += (Number(item.hasil2_t || 0) * Number(item.hasil2_qty || 0)) +
+                        (Number(item.waste_kulit_t || 0) * Number(item.waste_kulit_qty || 1)) +
+                        (Number(item.waste_potong_t || 0) * Number(item.waste_potong_qty || 1)) +
+                        (Number(item.waste_produksi_t || 0) * Number(item.waste_produksi_qty || 1)) +
+                        (Number(item.sispot_t || 0) * Number(item.sispot_qty || 1));
+                    });
+                    const sisa = Number(formData.hasil_t || 0) - totalUsed;
+                    if (sisa > 0) return prefs.darkMode ? 'bg-green-900/30 text-green-400 border-green-800' : 'bg-green-100 text-green-700 border-green-200';
+                    if (sisa === 0) return prefs.darkMode ? 'bg-blue-900/30 text-blue-400 border-blue-800' : 'bg-blue-100 text-blue-700 border-blue-200';
+                    return prefs.darkMode ? 'bg-red-900/30 text-red-400 border-red-800' : 'bg-red-100 text-red-700 border-red-200';
+                  })()
+                  }`}>
+                  {(() => {
+                    let totalUsed = 0;
+                    formData.carousel_items.forEach(item => {
+                      totalUsed += (Number(item.hasil2_t || 0) * Number(item.hasil2_qty || 0)) +
+                        (Number(item.waste_kulit_t || 0) * Number(item.waste_kulit_qty || 1)) +
+                        (Number(item.waste_potong_t || 0) * Number(item.waste_potong_qty || 1)) +
+                        (Number(item.waste_produksi_t || 0) * Number(item.waste_produksi_qty || 1)) +
+                        (Number(item.sispot_t || 0) * Number(item.sispot_qty || 1));
+                    });
+                    const sisa = Number(formData.hasil_t || 0) - totalUsed;
+                    return `Sisa Tinggi Block: ${sisa.toFixed(1)} cm`;
+                  })()}
+                </span>
+              </div>
+              <button type="button" onClick={addWO} className="flex items-center justify-center gap-1 text-xs px-4 py-2 bg-accent-blue text-navy-dark font-bold rounded hover:bg-opacity-80 transition-colors shadow-sm">
                 <Plus size={14} /> Tambah WO
               </button>
             </div>
-            
+
             <div className="p-4 flex flex-col gap-6 bg-gray-50 dark:bg-[#0f172a]/50">
               {formData.carousel_items.map((item, index) => (
                 <div key={index} className={`relative p-4 border rounded-lg shadow-sm ${prefs.darkMode ? 'bg-[#1e293b] border-slate-600' : 'bg-white border-gray-200'}`}>
                   {index > 0 && (
-                    <button type="button" onClick={() => removeWO(index)} className="absolute top-2 right-2 p-2 text-red-500 hover:bg-red-50 rounded-full dark:hover:bg-red-900/20" title="Hapus WO">
+                    <button type="button" onClick={() => removeWO(index)} className="absolute top-2 right-2 p-2 text-red-500 hover:bg-red-50 rounded-full dark:hover:bg-red-900/20 z-10" title="Hapus WO">
                       <Trash2 size={16} />
                     </button>
                   )}
-                  <h4 className="font-bold text-accent-blue mb-4 border-b pb-2">Item WO #{index + 1}</h4>
-                  
+                  <div className="flex flex-col md:flex-row md:items-center justify-between border-b pb-2 mb-4">
+                    <h4 className="font-bold text-accent-blue flex flex-col md:flex-row items-start md:items-center gap-2">
+                      Item WO #{index + 1}
+                      <span className={`text-xs px-2 py-0.5 rounded font-bold border ${sisaTinggiGlobal > 0
+                          ? (prefs.darkMode ? 'bg-green-900/30 text-green-400 border-green-800' : 'bg-green-100 text-green-700 border-green-200')
+                          : sisaTinggiGlobal === 0
+                            ? (prefs.darkMode ? 'bg-blue-900/30 text-blue-400 border-blue-800' : 'bg-blue-100 text-blue-700 border-blue-200')
+                            : (prefs.darkMode ? 'bg-red-900/30 text-red-400 border-red-800' : 'bg-red-100 text-red-700 border-red-200')
+                        }`}>
+                        Sisa Tinggi: {sisaTinggiGlobal.toFixed(1)} cm
+                      </span>
+                    </h4>
+                    <div className="flex flex-wrap gap-2 text-xs text-gray-500 dark:text-gray-400 mt-2 md:mt-0 pr-8">
+                      <span className="bg-white dark:bg-slate-700 px-2 py-1 rounded shadow-sm border border-gray-200 dark:border-slate-600">
+                        Barcode: <strong className="text-accent-blue">{formData.no_barcode || '-'}</strong>
+                      </span>
+                      <span className="bg-white dark:bg-slate-700 px-2 py-1 rounded shadow-sm border border-gray-200 dark:border-slate-600">
+                        Hasil Vertical: <strong className="text-accent-blue">{formData.hasil_p || '0'} x {formData.hasil_l || '0'} x {formData.hasil_t || '0'} ({formData.hasil_qty || '0'})</strong>
+                      </span>
+                    </div>
+                  </div>
+
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-12 gap-4">
-                    
+
                     <div className="col-span-1 lg:col-span-2">
                       <label className={labelClass}>Tipe Mesin</label>
                       <select name="tipe_mesin" value={item.tipe_mesin} onChange={(e) => handleCarouselChange(index, e)} className={inputClass}>
@@ -669,26 +1138,67 @@ const Realisasi = () => {
 
                     {item.tipe_mesin === 'Carousel' && (
                       <div className="col-span-1 lg:col-span-2 animate-in fade-in zoom-in">
-                        <label className={labelClass}>No Disk</label>
-                        <input type="text" name="no_disk" value={item.no_disk} onChange={(e) => handleCarouselChange(index, e)} placeholder="Nomor Disk" className={`${inputClass} border-purple-400 bg-purple-50 dark:bg-purple-900/20`} />
+                        <label className={labelClass}>Isi Disk</label>
+                        <input type="text" name="no_disk" value={item.no_disk} onChange={(e) => handleCarouselChange(index, e)} placeholder="Isi Disk" className={`${inputClass} border-purple-400 bg-purple-50 dark:bg-purple-900/20`} />
                       </div>
                     )}
 
-                    <div className="col-span-1 lg:col-span-4">
+                    <div className="col-span-1 lg:col-span-2">
+                      <label className={labelClass}>Tanggal WO</label>
+                      <input type="date" name="tanggal_wo" value={item.tanggal_wo} onChange={(e) => handleTanggalWoChange(index, e.target.value)} className={inputClass} />
+                    </div>
+
+                    <div 
+                      className="col-span-1 lg:col-span-3 relative" 
+                      onBlur={(e) => {
+                        if (!e.currentTarget.contains(e.relatedTarget)) {
+                          setFocusedWoIndex(null);
+                        }
+                      }}
+                    >
                       <label className={labelClass}>No WO</label>
-                      <input 
-                        list={`wo-list-${index}`}
-                        name="no_wo" 
-                        value={item.no_wo} 
-                        onChange={(e) => handleWoSelect(index, e.target.value)} 
-                        className={inputClass} 
-                        placeholder="Ketik & Pilih WO dari Planning..." 
+                      <input
+                        name="no_wo"
+                        value={item.no_wo}
+                        onChange={(e) => handleWoSelect(index, e.target.value)}
+                        onFocus={() => {
+                          setFocusedWoIndex(index);
+                          if (item.tanggal_wo) fetchActiveWOs(item.tanggal_wo);
+                        }}
+                        className={`${inputClass} ${item.no_wo && item.no_wo.length > 7 ? 'border-red-500 focus:ring-red-500 bg-red-50 dark:bg-red-900/20' : ''}`}
+                        placeholder="Ketik & Pilih WO..."
+                        autoComplete="off"
                       />
-                      <datalist id={`wo-list-${index}`}>
-                        {activeWOs.map((wo, wIdx) => (
-                          <option key={wIdx} value={wo.no_wo} />
-                        ))}
-                      </datalist>
+                      {item.no_wo && item.no_wo.length > 7 && (
+                        <span className="text-red-500 text-xs mt-1 block font-medium">Warning: No WO tidak boleh lebih dari 7 digit.</span>
+                      )}
+                      {focusedWoIndex === index && (
+                        <div className="absolute z-50 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-y-auto">
+                          {getAvailableWOs(index)
+                            .filter(wo => wo.no_wo.toLowerCase().includes((item.no_wo || '').toLowerCase()))
+                            .map((wo, wIdx) => (
+                            <div
+                              key={wIdx}
+                              className="px-3 py-2 cursor-pointer hover:bg-indigo-50 text-gray-800 text-sm border-b border-gray-100 last:border-0 font-medium"
+                              onMouseDown={(e) => {
+                                e.preventDefault(); 
+                                handleWoSelect(index, wo.no_wo);
+                                setFocusedWoIndex(null);
+                              }}
+                            >
+                              {wo.no_wo}
+                            </div>
+                          ))}
+                          {getAvailableWOs(index).filter(wo => wo.no_wo.toLowerCase().includes((item.no_wo || '').toLowerCase())).length === 0 && (
+                            <div className="px-3 py-2 text-gray-500 italic text-sm">WO tidak ditemukan</div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="col-span-1 lg:col-span-3">
+                      <label className={labelClass}>Keterangan</label>
+                      <input type="text" name="keterangan" value={item.keterangan} onChange={(e) => handleCarouselChange(index, e)} placeholder="Isi ket jika WO tidak ada di daftar..." className={inputClass} />
                     </div>
 
                     <div className="col-span-1 lg:col-span-4">
@@ -704,56 +1214,68 @@ const Realisasi = () => {
                       </div>
                     </div>
 
-                    <div className="col-span-1 lg:col-span-4">
+                    <div className="col-span-1 lg:col-span-6">
                       <label className={labelClass}>Hasil Cutting (P x L x T x Qty)</label>
                       <div className="grid grid-cols-4 gap-2">
-                        <input type="number" step="0.01" name="hasil2_p" value={item.hasil2_p} onChange={(e) => handleCarouselChange(index, e)} placeholder="P" className={inputClass} />
-                        <input type="number" step="0.01" name="hasil2_l" value={item.hasil2_l} onChange={(e) => handleCarouselChange(index, e)} placeholder="L" className={inputClass} />
-                        <input type="number" step="0.01" name="hasil2_t" value={item.hasil2_t} onChange={(e) => handleCarouselChange(index, e)} placeholder="T" title="Otomatis dari WO" className={`${inputClass} border-blue-400`} />
-                        <input type="number" name="hasil2_qty" value={item.hasil2_qty} onChange={(e) => handleCarouselChange(index, e)} placeholder="Qty" title="Otomatis dari Sisa WO" className={`${inputClass} border-blue-400`} />
+                        <input type="number" step="any" name="hasil2_p" value={item.hasil2_p} onChange={(e) => handleCarouselChange(index, e)} placeholder="P" className={`${inputClass} border-blue-400 bg-blue-50 dark:bg-blue-900/20`} />
+                        <input type="number" step="any" name="hasil2_l" value={item.hasil2_l} onChange={(e) => handleCarouselChange(index, e)} placeholder="L" className={`${inputClass} border-blue-400 bg-blue-50 dark:bg-blue-900/20`} />
+                        <input type="number" step="any" name="hasil2_t" value={item.hasil2_t} onChange={(e) => handleCarouselChange(index, e)} placeholder="T" title="Otomatis dari WO" className={`${inputClass} border-blue-400 bg-blue-50 dark:bg-blue-900/20`} />
+                        <input type="number" name="hasil2_qty" value={item.hasil2_qty} onChange={(e) => handleCarouselChange(index, e)} placeholder="Qty" title="Otomatis dari Sisa WO" className={`${inputClass} border-blue-400 bg-blue-50 dark:bg-blue-900/20`} />
                       </div>
                     </div>
 
-                    <div className="col-span-1 lg:col-span-4">
-                      <label className={labelClass}>Waste Kulit (T x Qty)</label>
-                      <div className="grid grid-cols-2 gap-2">
-                        <input type="number" step="0.01" name="waste_kulit_t" value={item.waste_kulit_t} onChange={(e) => handleCarouselChange(index, e)} placeholder="T" className={inputClass} />
-                        <input type="number" name="waste_kulit_qty" value={item.waste_kulit_qty} onChange={(e) => handleCarouselChange(index, e)} placeholder="Qty" className={inputClass} />
-                      </div>
-                    </div>
-                    
                     <div className="col-span-1 lg:col-span-6">
-                      <label className={labelClass}>Sispot (P x L x T x Qty) & Keterangan</label>
-                      <div className="grid grid-cols-6 gap-2">
-                        <input type="number" step="0.01" name="sispot_p" value={item.sispot_p} onChange={(e) => handleCarouselChange(index, e)} placeholder="P" className={inputClass} />
-                        <input type="number" step="0.01" name="sispot_l" value={item.sispot_l} onChange={(e) => handleCarouselChange(index, e)} placeholder="L" className={inputClass} />
-                        <input type="number" step="0.01" name="sispot_t" value={item.sispot_t} onChange={(e) => handleCarouselChange(index, e)} placeholder="T" className={inputClass} />
-                        <input type="number" name="sispot_qty" value={item.sispot_qty} onChange={(e) => handleCarouselChange(index, e)} placeholder="Qty" className={inputClass} />
-                        <input type="text" name="sispot_keterangan" value={item.sispot_keterangan} onChange={(e) => handleCarouselChange(index, e)} placeholder="Keterangan..." className={`${inputClass} col-span-2`} />
+                      <label className={labelClass}>Waste Kulit (P x L x T x Qty)</label>
+                      <div className="grid grid-cols-4 gap-2">
+                        <input type="number" step="any" name="waste_kulit_p" value={item.waste_kulit_p} onChange={(e) => handleCarouselChange(index, e)} {...getPLProps(item.waste_kulit_p, 'P', item.waste_kulit_t)} />
+                        <input type="number" step="any" name="waste_kulit_l" value={item.waste_kulit_l} onChange={(e) => handleCarouselChange(index, e)} {...getPLProps(item.waste_kulit_l, 'L', item.waste_kulit_t)} />
+                        <input type="number" step="any" name="waste_kulit_t" value={item.waste_kulit_t} onChange={(e) => handleCarouselChange(index, e)} {...getTProps(item.waste_kulit_t)} />
+                        <input type="number" name="waste_kulit_qty" value={item.waste_kulit_qty} onChange={(e) => handleCarouselChange(index, e)} {...getQtyProps(item.waste_kulit_t, item.waste_kulit_qty)} />
                       </div>
                     </div>
 
-                    <div className="col-span-1 lg:col-span-3">
-                      <label className={labelClass}>Waste Potong (T x Qty)</label>
-                      <div className="grid grid-cols-2 gap-2">
-                        <input type="number" step="0.01" name="waste_potong_t" value={item.waste_potong_t} onChange={(e) => handleCarouselChange(index, e)} placeholder="T" className={inputClass} />
-                        <input type="number" name="waste_potong_qty" value={item.waste_potong_qty} onChange={(e) => handleCarouselChange(index, e)} placeholder="Qty" className={inputClass} />
+                    <div className="col-span-1 lg:col-span-6">
+                      <label className={labelClass}>Waste Potong (P x L x T x Qty)</label>
+                      <div className="grid grid-cols-4 gap-2">
+                        <input type="number" step="any" name="waste_potong_p" value={item.waste_potong_p} onChange={(e) => handleCarouselChange(index, e)} {...getPLProps(item.waste_potong_p, 'P', item.waste_potong_t)} />
+                        <input type="number" step="any" name="waste_potong_l" value={item.waste_potong_l} onChange={(e) => handleCarouselChange(index, e)} {...getPLProps(item.waste_potong_l, 'L', item.waste_potong_t)} />
+                        <input type="number" step="any" name="waste_potong_t" value={item.waste_potong_t} onChange={(e) => handleCarouselChange(index, e)} {...getTProps(item.waste_potong_t)} />
+                        <input type="number" name="waste_potong_qty" value={item.waste_potong_qty} onChange={(e) => handleCarouselChange(index, e)} {...getQtyProps(item.waste_potong_t, item.waste_potong_qty)} />
                       </div>
                     </div>
 
-                    <div className="col-span-1 lg:col-span-3">
-                      <label className={labelClass}>Waste Produksi (T x Qty)</label>
-                      <div className="grid grid-cols-2 gap-2">
-                        <input type="number" step="0.01" name="waste_produksi_t" value={item.waste_produksi_t} onChange={(e) => handleCarouselChange(index, e)} placeholder="T" className={inputClass} />
-                        <input type="number" name="waste_produksi_qty" value={item.waste_produksi_qty} onChange={(e) => handleCarouselChange(index, e)} placeholder="Qty" className={inputClass} />
+                    <div className="col-span-1 lg:col-span-6">
+                      <label className={labelClass}>Waste Produksi & Keterangan</label>
+                      <div className="grid grid-cols-4 gap-2">
+                        <input type="number" step="any" name="waste_produksi_p" value={item.waste_produksi_p} onChange={(e) => handleCarouselChange(index, e)} {...getPLProps(item.waste_produksi_p, 'P', item.waste_produksi_t)} />
+                        <input type="number" step="any" name="waste_produksi_l" value={item.waste_produksi_l} onChange={(e) => handleCarouselChange(index, e)} {...getPLProps(item.waste_produksi_l, 'L', item.waste_produksi_t)} />
+                        <input type="number" step="any" name="waste_produksi_t" value={item.waste_produksi_t} onChange={(e) => handleCarouselChange(index, e)} {...getTProps(item.waste_produksi_t)} />
+                        <input type="number" name="waste_produksi_qty" value={item.waste_produksi_qty} onChange={(e) => handleCarouselChange(index, e)} {...getQtyProps(item.waste_produksi_t, item.waste_produksi_qty)} />
+                        <input type="text" name="waste_produksi_keterangan" value={item.waste_produksi_keterangan} onChange={(e) => handleCarouselChange(index, e)} placeholder="Keterangan..." className={`${inputClass} col-span-4`} />
                       </div>
                     </div>
 
-                    <div className="col-span-1 lg:col-span-6 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg shadow-sm">
+                    <div className="col-span-1 lg:col-span-6">
+                      <label className={labelClass}>
+                        Sispot & Keterangan 
+                        {index !== formData.carousel_items.length - 1 && (
+                          <span className="text-red-500 font-normal ml-2 text-xs italic">(Hanya untuk WO terakhir)</span>
+                        )}
+                      </label>
+                      <div className={`grid grid-cols-4 gap-2 ${index !== formData.carousel_items.length - 1 ? 'opacity-50 pointer-events-none' : ''}`}>
+                        <input type="number" step="any" name="sispot_p" value={item.sispot_p} onChange={(e) => handleCarouselChange(index, e)} disabled={index !== formData.carousel_items.length - 1} {...getPLProps(item.sispot_p, 'P', item.sispot_t)} />
+                        <input type="number" step="any" name="sispot_l" value={item.sispot_l} onChange={(e) => handleCarouselChange(index, e)} disabled={index !== formData.carousel_items.length - 1} {...getPLProps(item.sispot_l, 'L', item.sispot_t)} />
+                        <input type="number" step="any" name="sispot_t" value={item.sispot_t} onChange={(e) => handleCarouselChange(index, e)} disabled={index !== formData.carousel_items.length - 1} {...getTProps(item.sispot_t)} />
+                        <input type="number" name="sispot_qty" value={item.sispot_qty} onChange={(e) => handleCarouselChange(index, e)} disabled={index !== formData.carousel_items.length - 1} {...getQtyProps(item.sispot_t, item.sispot_qty)} />
+                        <input type="text" name="sispot_keterangan" value={item.sispot_keterangan} onChange={(e) => handleCarouselChange(index, e)} disabled={index !== formData.carousel_items.length - 1} placeholder="Keterangan..." className={`${inputClass} col-span-4`} />
+                      </div>
+                    </div>
+
+                    <div className="col-span-1 lg:col-span-12 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg shadow-sm">
                       <label className={`${labelClass} text-red-700 dark:text-red-400 font-bold flex items-center gap-2 mb-2`}>
                         <AlertCircle size={16} /> Downtime (Kode, Jam, Ket)
                       </label>
-                      <div className="grid grid-cols-5 gap-2">
+                      <div className="grid grid-cols-8 gap-2">
                         <select name="dt_kode" value={item.dt_kode} onChange={(e) => handleCarouselChange(index, e)} className={`${inputClass} col-span-1`}>
                           <option value="">Kode</option>
                           {downtimeOptions.map((opt, i) => (
@@ -763,7 +1285,7 @@ const Realisasi = () => {
                         <input type="time" name="dt_jam_awal" value={item.dt_jam_awal} onChange={(e) => handleCarouselChange(index, e)} className={`${inputClass} col-span-1`} />
                         <input type="time" name="dt_jam_akhir" value={item.dt_jam_akhir} onChange={(e) => handleCarouselChange(index, e)} className={`${inputClass} col-span-1`} />
                         <input type="text" value={calculateDurationMinutes(item.dt_jam_awal, item.dt_jam_akhir)} readOnly placeholder="Durasi" className={`${inputClass} col-span-1 bg-white/50 font-bold text-center text-red-600 dark:text-red-400`} />
-                        <input type="text" name="dt_keterangan" value={item.dt_keterangan} onChange={(e) => handleCarouselChange(index, e)} placeholder="Keterangan..." className={`${inputClass} col-span-1`} />
+                        <input type="text" name="dt_keterangan" value={item.dt_keterangan} onChange={(e) => handleCarouselChange(index, e)} placeholder="Keterangan..." className={`${inputClass} col-span-4`} />
                       </div>
                     </div>
                   </div>
@@ -786,14 +1308,25 @@ const Realisasi = () => {
                 Batal Edit
               </button>
             )}
-            <button
-              type="submit"
-              disabled={isSubmitting}
-              className={`flex items-center gap-2 bg-accent-blue text-navy-dark font-bold px-8 py-3 rounded-lg shadow hover:bg-opacity-90 transition-all disabled:opacity-50 ${!editId && 'ml-auto'}`}
-            >
-              {isSubmitting ? <Loader className="animate-spin" size={20} /> : <Save size={20} />}
-              {isSubmitting ? 'Menyimpan...' : (editId ? 'Simpan Perubahan' : 'Submit Realisasi')}
-            </button>
+            <div className={`flex items-center gap-3 ${!editId && 'ml-auto'}`}>
+              <button
+                type="button"
+                disabled={isSubmitting}
+                onClick={() => handleSubmit(null, true)}
+                className="flex items-center gap-2 bg-amber-400 text-amber-900 font-bold px-6 py-3 rounded-lg shadow hover:bg-amber-500 transition-all disabled:opacity-50"
+              >
+                {isSubmitting ? <Loader className="animate-spin" size={20} /> : <Save size={20} />}
+                Simpan sebagai Draft
+              </button>
+              <button
+                type="submit"
+                disabled={isSubmitting}
+                className="flex items-center gap-2 bg-accent-blue text-navy-dark font-bold px-8 py-3 rounded-lg shadow hover:bg-opacity-90 transition-all disabled:opacity-50"
+              >
+                {isSubmitting ? <Loader className="animate-spin" size={20} /> : <Save size={20} />}
+                {isSubmitting ? 'Menyimpan...' : (editId ? 'Simpan Perubahan' : 'Submit Realisasi')}
+              </button>
+            </div>
           </div>
         </form>
       )}
@@ -803,14 +1336,21 @@ const Realisasi = () => {
         <div className={`flex flex-col gap-4 rounded-xl shadow-sm border overflow-hidden ${prefs.darkMode ? 'bg-[#0f172a] border-slate-700' : 'bg-white border-gray-200'}`}>
           <div className={`p-4 border-b flex flex-col md:flex-row gap-4 items-center justify-between ${prefs.darkMode ? 'border-slate-700 bg-slate-800 text-white' : 'border-gray-200 bg-gray-50 text-navy-dark'}`}>
             <h3 className="font-bold flex items-center gap-2">Data History Realisasi</h3>
-            <div className="flex items-center gap-2">
-              <span className="text-sm font-semibold text-gray-500 dark:text-gray-400">Pilih Tanggal:</span>
-              <input type="date" value={filterDate} onChange={e => setFilterDate(e.target.value)} className={inputClass} title="Pilih Tanggal" />
-              {filterDate && (
-                <button onClick={() => setFilterDate('')} className="p-2 text-red-500 hover:bg-red-50 rounded-md" title="Reset Filter">
-                  <X size={16} />
-                </button>
-              )}
+            <div className="flex flex-col md:flex-row items-center gap-4">
+              <div className="flex bg-gray-200 dark:bg-slate-700 rounded-lg p-1">
+                <button onClick={() => setFilterStatus('ALL')} className={`px-3 py-1 rounded-md text-sm font-semibold transition-all ${filterStatus === 'ALL' ? 'bg-white text-navy-dark shadow' : 'text-gray-500 hover:text-navy-dark'}`}>Semua</button>
+                <button onClick={() => setFilterStatus('SUBMITTED')} className={`px-3 py-1 rounded-md text-sm font-semibold transition-all ${filterStatus === 'SUBMITTED' ? 'bg-green-500 text-white shadow' : 'text-gray-500 hover:text-green-600'}`}>Tersimpan</button>
+                <button onClick={() => setFilterStatus('DRAFT')} className={`px-3 py-1 rounded-md text-sm font-semibold transition-all ${filterStatus === 'DRAFT' ? 'bg-amber-400 text-amber-900 shadow' : 'text-gray-500 hover:text-amber-600'}`}>Draft</button>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-semibold text-gray-500 dark:text-gray-400">Tanggal:</span>
+                <input type="date" value={filterDate} onChange={e => setFilterDate(e.target.value)} className={inputClass} title="Pilih Tanggal" />
+                {filterDate && (
+                  <button onClick={() => setFilterDate('')} className="p-2 text-red-500 hover:bg-red-50 rounded-md" title="Reset Filter">
+                    <X size={16} />
+                  </button>
+                )}
+              </div>
             </div>
           </div>
 
@@ -858,15 +1398,26 @@ const Realisasi = () => {
                       <td className="p-4 text-gray-600 dark:text-gray-400">{row.no_barcode}</td>
                       <td className="p-4 text-gray-600 dark:text-gray-400">{row.no_spk}</td>
                       <td className="p-4 font-bold text-accent-blue">{row.carousel_items ? row.carousel_items.length : 0} WO</td>
-                      <td className="p-4 text-gray-600 dark:text-gray-400">{row.nama_operator} ({row.shift} - {row.grup})</td>
+                      <td className="p-4 text-gray-600 dark:text-gray-400">
+                        {row.nama_operator} ({row.shift} - {row.grup})
+                        {row.identitas_status === 'DRAFT' && <span className="ml-2 inline-block px-2 py-0.5 bg-amber-100 text-amber-800 text-[10px] font-bold rounded">DRAFT</span>}
+                      </td>
                       <td className="p-4 text-center">
                         <div className="flex items-center justify-center gap-2">
-                          <button onClick={() => setSelectedDetail(row)} className="p-2 bg-blue-50 text-blue-600 hover:bg-blue-100 rounded-md transition-colors dark:bg-blue-900/30 dark:hover:bg-blue-900/50" title="Lihat Detail">
-                            <Eye size={16} />
-                          </button>
-                          <button onClick={() => handleEdit(row)} className="p-2 bg-amber-50 text-amber-600 hover:bg-amber-100 rounded-md transition-colors dark:bg-amber-900/30 dark:hover:bg-amber-900/50" title="Edit Data">
-                            <Edit size={16} />
-                          </button>
+                          {row.identitas_status === 'DRAFT' ? (
+                            <button onClick={() => handleEdit(row)} className="flex items-center gap-1 px-3 py-1.5 bg-amber-100 text-amber-700 hover:bg-amber-200 rounded-md transition-colors text-xs font-bold" title="Lanjutkan Draft">
+                              <Edit size={14} /> Lanjutkan Draft
+                            </button>
+                          ) : (
+                            <>
+                              <button onClick={() => setSelectedDetail(row)} className="p-2 bg-blue-50 text-blue-600 hover:bg-blue-100 rounded-md transition-colors dark:bg-blue-900/30 dark:hover:bg-blue-900/50" title="Lihat Detail">
+                                <Eye size={16} />
+                              </button>
+                              <button onClick={() => handleEdit(row)} className="p-2 bg-amber-50 text-amber-600 hover:bg-amber-100 rounded-md transition-colors dark:bg-amber-900/30 dark:hover:bg-amber-900/50" title="Edit Data">
+                                <Edit size={16} />
+                              </button>
+                            </>
+                          )}
                           <button onClick={() => handleDelete(row.id)} className="p-2 bg-red-50 text-red-600 hover:bg-red-100 rounded-md transition-colors dark:bg-red-900/30 dark:hover:bg-red-900/50" title="Hapus Data">
                             <Trash2 size={16} />
                           </button>
@@ -894,7 +1445,7 @@ const Realisasi = () => {
               </button>
             </div>
             <div className="p-6 grid grid-cols-1 gap-8">
-              
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                 {/* Identitas Detail */}
                 <div>
@@ -914,7 +1465,7 @@ const Realisasi = () => {
                   <h4 className="font-bold text-lg mb-4 text-accent-blue border-b pb-2">II. Level 1 (Vertical) - Mesin {selectedDetail.v_no_mesin || '-'}</h4>
                   <div className="grid grid-cols-2 gap-4 text-sm">
                     <div><span className="block text-gray-500 text-xs">Hasil (PxLxTxQty)</span><span className="font-bold">{selectedDetail.v_hasil_p}x{selectedDetail.v_hasil_l}x{selectedDetail.v_hasil_t} ({selectedDetail.v_hasil_qty})</span></div>
-                    <div><span className="block text-gray-500 text-xs">Sisa Potong (PxLxTxQty)</span><span className="font-bold">{selectedDetail.sisa_p}x{selectedDetail.sisa_l}x{selectedDetail.sisa_t} ({selectedDetail.sisa_qty})<br/><span className="text-gray-400 italic text-xs">{selectedDetail.sisa_keterangan}</span></span></div>
+                    <div><span className="block text-gray-500 text-xs">Sisa Potong (PxLxTxQty)</span><span className="font-bold">{selectedDetail.sisa_p}x{selectedDetail.sisa_l}x{selectedDetail.sisa_t} ({selectedDetail.sisa_qty})<br /><span className="text-gray-400 italic text-xs">{selectedDetail.sisa_keterangan}</span></span></div>
                     <div><span className="block text-gray-500 text-xs">Waste Samping Kiri Kanan (PxLxTxQty)</span><span className="font-bold">{selectedDetail.waste_samping_p}x{selectedDetail.waste_samping_l}x{selectedDetail.waste_samping_t} ({selectedDetail.waste_samping_qty})</span></div>
                     <div><span className="block text-gray-500 text-xs">Waste Depan Belakang (PxLxTxQty)</span><span className="font-bold">{selectedDetail.waste_dpn_blk_p}x{selectedDetail.waste_dpn_blk_l}x{selectedDetail.waste_dpn_blk_t} ({selectedDetail.waste_dpn_blk_qty})</span></div>
                     <div className="col-span-2"><span className="block text-gray-500 text-xs">Downtime</span><span className="font-bold">{selectedDetail.dt_kode ? `${selectedDetail.dt_kode} (${selectedDetail.dt_jam_awal} - ${selectedDetail.dt_jam_akhir})` : '-'}</span></div>
@@ -925,7 +1476,7 @@ const Realisasi = () => {
               {/* Level 2 (Multi-WO) */}
               <div>
                 <h4 className="font-bold text-lg mb-4 text-accent-blue border-b pb-2">III. Level 2 (Horizontal / Carousel)</h4>
-                
+
                 {selectedDetail.carousel_items && selectedDetail.carousel_items.length > 0 ? (
                   <div className="flex flex-col gap-4">
                     {selectedDetail.carousel_items.map((item, idx) => (
@@ -940,10 +1491,10 @@ const Realisasi = () => {
                           <div><span className="block text-gray-500 text-xs">Mesin</span><span className="font-bold">{item.tipe_mesin} ({item.no_mesin})</span></div>
                           {item.tipe_mesin === 'Carousel' && <div><span className="block text-gray-500 text-xs">No Disk</span><span className="font-bold">{item.no_disk || '-'}</span></div>}
                           <div><span className="block text-gray-500 text-xs">Hasil (PxLxTxQty)</span><span className="font-bold">{item.hasil_p}x{item.hasil_l}x{item.hasil_t} ({item.hasil_qty})</span></div>
-                          <div><span className="block text-gray-500 text-xs">Sispot (PxLxTxQty)</span><span className="font-bold">{item.sispot_p}x{item.sispot_l}x{item.sispot_t} ({item.sispot_qty})<br/><span className="text-gray-400 italic text-xs">{item.sispot_keterangan}</span></span></div>
-                          <div><span className="block text-gray-500 text-xs">Waste Kulit (TxQty)</span><span className="font-bold">{item.waste_kulit_t} ({item.waste_kulit_qty}x)</span></div>
-                          <div><span className="block text-gray-500 text-xs">Waste Potong (TxQty)</span><span className="font-bold">{item.waste_potong_t} ({item.waste_potong_qty}x)</span></div>
-                          <div><span className="block text-gray-500 text-xs">Waste Produksi (TxQty)</span><span className="font-bold">{item.waste_produksi_t} ({item.waste_produksi_qty}x)</span></div>
+                          <div><span className="block text-gray-500 text-xs">Waste Kulit (PxLxTxQty)</span><span className="font-bold">{item.waste_kulit_p}x{item.waste_kulit_l}x{item.waste_kulit_t} ({item.waste_kulit_qty})</span></div>
+                          <div><span className="block text-gray-500 text-xs">Waste Potong (PxLxTxQty)</span><span className="font-bold">{item.waste_potong_p}x{item.waste_potong_l}x{item.waste_potong_t} ({item.waste_potong_qty})</span></div>
+                          <div><span className="block text-gray-500 text-xs">Waste Produksi (PxLxTxQty)</span><span className="font-bold">{item.waste_produksi_p}x{item.waste_produksi_l}x{item.waste_produksi_t} ({item.waste_produksi_qty})<br /><span className="text-gray-400 italic text-xs">{item.waste_produksi_keterangan}</span></span></div>
+                          <div><span className="block text-gray-500 text-xs">Sispot (PxLxTxQty)</span><span className="font-bold">{item.sispot_p}x{item.sispot_l}x{item.sispot_t} ({item.sispot_qty})<br /><span className="text-gray-400 italic text-xs">{item.sispot_keterangan}</span></span></div>
                           <div className="col-span-2"><span className="block text-gray-500 text-xs">Downtime</span><span className="font-bold">{item.dt_kode ? `${item.dt_kode} (${item.dt_jam_awal} - ${item.dt_jam_akhir})` : '-'}</span></div>
                           {item.status === 'Reject' && (
                             <div className="col-span-2"><span className="block text-red-400 text-xs">Alasan Reject</span><span className="font-bold text-red-500">{item.alasan_reject}</span></div>
@@ -964,7 +1515,7 @@ const Realisasi = () => {
 
       {/* CUSTOM ALERT MODAL */}
       {alertModal.show && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in">
+        <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in">
           <div className={`w-full max-w-lg rounded-2xl shadow-2xl p-6 flex flex-col gap-4 ${prefs.darkMode ? 'bg-slate-900 text-white' : 'bg-white'}`}>
             <h3 className="text-xl font-bold text-red-500 flex items-center gap-2 border-b border-red-100 pb-3">
               <span className="flex items-center justify-center w-8 h-8 rounded-full bg-red-100 text-red-600">!</span>
@@ -974,7 +1525,7 @@ const Realisasi = () => {
               {alertModal.message}
             </div>
             <div className="flex justify-end mt-2">
-              <button 
+              <button
                 onClick={() => setAlertModal({ show: false, message: '' })}
                 className="px-6 py-2 bg-red-500 text-white font-bold rounded-lg hover:bg-red-600 transition-colors shadow-sm"
               >

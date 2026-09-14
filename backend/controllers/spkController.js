@@ -1532,7 +1532,8 @@ exports.calculateOEE = async (req, res) => {
 
 exports.getActiveWOs = async (req, res) => {
     try {
-        const query = `
+        const { tanggal } = req.query;
+        let query = `
             SELECT 
                 s.no_wo, 
                 s.nama_item,
@@ -1540,13 +1541,68 @@ exports.getActiveWOs = async (req, res) => {
                 s.qty_cutting,
                 COALESCE(SUM(rc.hasil_qty), 0) as qty_terpenuhi
             FROM spk_items s
+            LEFT JOIN upload_history u ON s.history_id = u.id
             LEFT JOIN realisasi_carousel rc ON s.no_wo = rc.no_wo AND rc.status = 'OK'
             WHERE s.no_wo IS NOT NULL AND s.no_wo != ''
-            GROUP BY s.no_wo, s.nama_item, s.ukuran_t, s.qty_cutting
-            HAVING qty_terpenuhi < s.qty_cutting
         `;
-        const [rows] = await db.query(query);
-        res.json(rows);
+        const queryParams = [];
+
+        if (tanggal) {
+            query += ` AND DATE(u.tanggal_upload) = ?`;
+            queryParams.push(tanggal);
+        }
+
+        query += `
+            GROUP BY s.no_wo, s.nama_item, s.ukuran_t, s.qty_cutting
+        `;
+        const [rows] = await db.query(query, queryParams);
+
+        // Fetch fulfilled WOs independently so we can accurately check split WOs
+        const [fulfilled] = await db.query(`
+            SELECT no_wo, SUM(hasil_qty) as fulfilled_qty 
+            FROM realisasi_carousel 
+            WHERE status = 'OK' 
+            GROUP BY no_wo
+        `);
+        const fulfilledMap = {};
+        for (const f of fulfilled) {
+            fulfilledMap[f.no_wo] = Number(f.fulfilled_qty);
+        }
+
+        const splitRows = [];
+        for (const row of rows) {
+            if (row.no_wo && row.no_wo.includes(',')) {
+                const wos = row.no_wo.split(',').map(w => w.trim()).filter(Boolean);
+                // Distribute qty_cutting equally among the split WOs
+                const qtyPerWo = Math.max(1, Math.round(row.qty_cutting / wos.length));
+                
+                for (const wo of wos) {
+                    const fQty = fulfilledMap[wo] || 0;
+                    if (fQty < qtyPerWo) {
+                        splitRows.push({
+                            ...row,
+                            no_wo: wo,
+                            qty_cutting: qtyPerWo,
+                            qty_terpenuhi: fQty
+                        });
+                    }
+                }
+            } else {
+                const wo = row.no_wo ? row.no_wo.trim() : '';
+                if (wo) {
+                    const fQty = fulfilledMap[wo] || 0;
+                    if (fQty < row.qty_cutting) {
+                        splitRows.push({
+                            ...row,
+                            no_wo: wo,
+                            qty_terpenuhi: fQty
+                        });
+                    }
+                }
+            }
+        }
+
+        res.json(splitRows);
     } catch (error) {
         console.error('[ERROR] getActiveWOs:', error);
         res.status(500).json({ message: 'Gagal mengambil data WO aktif' });

@@ -5,7 +5,7 @@ export const translations = {
   id: {
     // Sidebar menu
     dashboard:      'Dashboard',
-    insertSpk:      'Insert SPK',
+    insertSpk:      'Planning',
     realisasi:      'Realisasi',
     efisiensi:      'Predictive OEE',
     stok:           'Manajemen Stok',
@@ -48,7 +48,7 @@ export const translations = {
   en: {
     // Sidebar menu
     dashboard:      'Dashboard',
-    insertSpk:      'Insert SPK',
+    insertSpk:      'Planning',
     realisasi:      'Realization',
     efisiensi:      'Predictive OEE',
     stok:           'Stock Management',

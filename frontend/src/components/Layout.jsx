@@ -41,9 +41,24 @@ const Layout = ({ children }) => {
       name: t.dashboard,  
       icon: LayoutDashboard
     },
-    ...((user.role === 'PPC' || user.role === 'Superadmin') ? [{ path: '/insert-spk', name: t.insertSpk, icon: FilePlus }] : []),
-    { path: '/realisasi',  name: t.realisasi || 'Realisasi', icon: ClipboardCheck },
-    { path: '/efisiensi',  name: t.efisiensi,  icon: Activity },
+    {
+      id: 'planning',
+      name: t.insertSpk,   
+      icon: FilePlus,
+      subItems: [
+        ...((user.role === 'PPC' || user.role === 'Superadmin') ? [{ path: '/insert-spk', name: 'Insert Planning', icon: FilePlus }] : []),
+        { path: '/efisiensi', name: t.efisiensi, icon: Activity }
+      ]
+    },
+    { 
+      id: 'realisasi',
+      name: t.realisasi || 'Realisasi', 
+      icon: ClipboardCheck,
+      subItems: [
+        { path: '/realisasi/input', name: 'Input Realisasi', icon: ClipboardCheck },
+        { path: '/realisasi/hasil', name: 'Hasil Realisasi', icon: ClipboardCheck }
+      ]
+    },
     // { path: '/stok',       name: t.stok,       icon: Package },
     { 
       id: 'database',
