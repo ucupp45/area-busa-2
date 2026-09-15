@@ -33,15 +33,16 @@ exports.createRealisasi = async (req, res) => {
                                    (Number(item.sispot_t || 0) * Number(item.sispot_qty || 1));
                 totalDemandT += itemTotalT;
             }
-            if (totalDemandT > Number(hasil_t) + 0.01) {
+            const sbHeight = Number(hasil_t || 0) * Number(hasil_qty || 1);
+            if (totalDemandT > sbHeight + 0.01) {
                 await connection.rollback();
                 return res.status(400).json({ 
-                    message: `Kubikasi Gagal: Ketinggian demand (${totalDemandT.toFixed(2)} cm) melebihi tinggi SB Vertical (${Number(hasil_t).toFixed(2)} cm)` 
+                    message: `Kubikasi Gagal: Ketinggian demand (${totalDemandT.toFixed(2)} cm) melebihi tinggi SB Vertical (${sbHeight.toFixed(2)} cm)` 
                 });
-            } else if (Number(hasil_t) > 0 && totalDemandT < Number(hasil_t) - 0.01) {
+            } else if (sbHeight > 0 && totalDemandT < sbHeight - 0.01) {
                 await connection.rollback();
                 return res.status(400).json({ 
-                    message: `Validasi Gagal: Masih ada sisa ketinggian yang belum terpakai (${(Number(hasil_t) - totalDemandT).toFixed(2)} cm). Sisa ketinggian harus habis terpakai.` 
+                    message: `Validasi Gagal: Masih ada sisa ketinggian yang belum terpakai (${(sbHeight - totalDemandT).toFixed(2)} cm). Sisa ketinggian harus habis terpakai.` 
                 });
             }
         }
@@ -242,15 +243,16 @@ exports.updateRealisasi = async (req, res) => {
                                 (Number(item.waste_produksi_t || 0) * Number(item.waste_produksi_qty || 1)) + 
                                 (Number(item.sispot_t || 0) * Number(item.sispot_qty || 1));
             }
-            if (totalDemandT > Number(hasil_t) + 0.01) {
+            const sbHeight = Number(hasil_t || 0) * Number(hasil_qty || 1);
+            if (totalDemandT > sbHeight + 0.01) {
                 await connection.rollback();
                 return res.status(400).json({ 
-                    message: `Kubikasi Gagal: Ketinggian demand (${totalDemandT.toFixed(2)} cm) melebihi tinggi SB Vertical (${Number(hasil_t).toFixed(2)} cm)` 
+                    message: `Kubikasi Gagal: Ketinggian demand (${totalDemandT.toFixed(2)} cm) melebihi tinggi SB Vertical (${sbHeight.toFixed(2)} cm)` 
                 });
-            } else if (Number(hasil_t) > 0 && totalDemandT < Number(hasil_t) - 0.01) {
+            } else if (sbHeight > 0 && totalDemandT < sbHeight - 0.01) {
                 await connection.rollback();
                 return res.status(400).json({ 
-                    message: `Validasi Gagal: Masih ada sisa ketinggian yang belum terpakai (${(Number(hasil_t) - totalDemandT).toFixed(2)} cm). Sisa ketinggian harus habis terpakai.` 
+                    message: `Validasi Gagal: Masih ada sisa ketinggian yang belum terpakai (${(sbHeight - totalDemandT).toFixed(2)} cm). Sisa ketinggian harus habis terpakai.` 
                 });
             }
         }

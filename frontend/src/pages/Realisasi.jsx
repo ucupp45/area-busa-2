@@ -158,9 +158,21 @@ const Realisasi = () => {
       if (filterStatus === 'DRAFT' && currentStatus !== 'DRAFT') return false;
       if (filterStatus === 'SUBMITTED' && currentStatus === 'DRAFT') return false;
       
-      if (!filterDate) return true;
+      const getTodayDateString = () => {
+        const d = new Date();
+        const offset = d.getTimezoneOffset() * 60000;
+        return new Date(d.getTime() - offset).toISOString().split('T')[0];
+      };
+      
+      const activeDateFilter = filterDate || getTodayDateString();
       const rowDate = new Date(row.tanggal).setHours(0, 0, 0, 0);
-      const targetDate = new Date(filterDate).setHours(0, 0, 0, 0);
+      const targetDate = new Date(activeDateFilter).setHours(0, 0, 0, 0);
+
+      // Jika data adalah draft, selalu tampilkan terlepas dari filter tanggal (khusus di tab Draft atau Semua)
+      if (currentStatus === 'DRAFT') {
+        return true;
+      }
+
       return rowDate === targetDate;
     }).sort((a, b) => {
       if (!sortConfig.key) return 0;
@@ -322,6 +334,9 @@ const Realisasi = () => {
         } else if (pAsalRaw === 0 && pCutRaw === 0) {
           updated.waste_dpn_blk_t = '';
           updated.waste_dpn_blk_qty = '';
+        } else {
+          updated.waste_dpn_blk_t = 0;
+          updated.waste_dpn_blk_qty = 0;
         }
 
         const diffL_raw = Math.round((lAsalRaw - (lCutRaw * lMultiplier)) * 10) / 10;
@@ -337,6 +352,9 @@ const Realisasi = () => {
         } else if (lAsalRaw === 0 && lCutRaw === 0) {
           updated.waste_samping_t = '';
           updated.waste_samping_qty = '';
+        } else {
+          updated.waste_samping_t = 0;
+          updated.waste_samping_qty = 0;
         }
       }
 
@@ -618,7 +636,7 @@ const Realisasi = () => {
         (Number(item.sispot_t || 0) * Number(item.sispot_qty || 1));
     });
 
-    const sbHeight = Number(formData.hasil_t || 0);
+    const sbHeight = Number(formData.hasil_t || 0) * Number(formData.hasil_qty || 1);
 
     if (!isDraft) {
       if (totalDemandT > sbHeight + 0.01) {
@@ -766,7 +784,7 @@ const Realisasi = () => {
         (Number(item.waste_produksi_t || 0) * Number(item.waste_produksi_qty || 1)) +
         (Number(item.sispot_t || 0) * Number(item.sispot_qty || 1));
     });
-    return Number(formData.hasil_t || 0) - totalUsed;
+    return (Number(formData.hasil_t || 0) * Number(formData.hasil_qty || 1)) - totalUsed;
   };
   const sisaTinggiGlobal = getSisaTinggiGlobal();
   const isSisaZero = sisaTinggiGlobal <= 0.001;
@@ -1051,34 +1069,6 @@ const Realisasi = () => {
             <div className={`p-4 border-b flex flex-wrap items-center justify-between gap-2 ${prefs.darkMode ? 'border-slate-700 bg-slate-800 text-white' : 'border-gray-200 bg-gray-50 text-navy-dark'}`}>
               <div className="flex items-center gap-4">
                 <span className="font-bold">Bagian III: Proses Level 2 (Horizontal / Carousel) - Multi WO</span>
-                <span className={`text-xs px-2 py-1 rounded font-bold border ${(() => {
-                    let totalUsed = 0;
-                    formData.carousel_items.forEach(item => {
-                      totalUsed += (Number(item.hasil2_t || 0) * Number(item.hasil2_qty || 0)) +
-                        (Number(item.waste_kulit_t || 0) * Number(item.waste_kulit_qty || 1)) +
-                        (Number(item.waste_potong_t || 0) * Number(item.waste_potong_qty || 1)) +
-                        (Number(item.waste_produksi_t || 0) * Number(item.waste_produksi_qty || 1)) +
-                        (Number(item.sispot_t || 0) * Number(item.sispot_qty || 1));
-                    });
-                    const sisa = Number(formData.hasil_t || 0) - totalUsed;
-                    if (sisa > 0) return prefs.darkMode ? 'bg-green-900/30 text-green-400 border-green-800' : 'bg-green-100 text-green-700 border-green-200';
-                    if (sisa === 0) return prefs.darkMode ? 'bg-blue-900/30 text-blue-400 border-blue-800' : 'bg-blue-100 text-blue-700 border-blue-200';
-                    return prefs.darkMode ? 'bg-red-900/30 text-red-400 border-red-800' : 'bg-red-100 text-red-700 border-red-200';
-                  })()
-                  }`}>
-                  {(() => {
-                    let totalUsed = 0;
-                    formData.carousel_items.forEach(item => {
-                      totalUsed += (Number(item.hasil2_t || 0) * Number(item.hasil2_qty || 0)) +
-                        (Number(item.waste_kulit_t || 0) * Number(item.waste_kulit_qty || 1)) +
-                        (Number(item.waste_potong_t || 0) * Number(item.waste_potong_qty || 1)) +
-                        (Number(item.waste_produksi_t || 0) * Number(item.waste_produksi_qty || 1)) +
-                        (Number(item.sispot_t || 0) * Number(item.sispot_qty || 1));
-                    });
-                    const sisa = Number(formData.hasil_t || 0) - totalUsed;
-                    return `Sisa Tinggi Block: ${sisa.toFixed(1)} cm`;
-                  })()}
-                </span>
               </div>
               <button type="button" onClick={addWO} className="flex items-center justify-center gap-1 text-xs px-4 py-2 bg-accent-blue text-navy-dark font-bold rounded hover:bg-opacity-80 transition-colors shadow-sm">
                 <Plus size={14} /> Tambah WO
