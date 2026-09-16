@@ -425,7 +425,7 @@ const Realisasi = () => {
         }
         // Kondisi B: Sisa pada sisi Lebar
         else if (selisihL > 0 && selisihP === 0) {
-          updated.sisa_p = pAsal > 0 ? pAsal : '';
+          updated.sisa_p = pCut > 0 ? pCut : (pAsal > 0 ? pAsal : '');
           updated.sisa_l = Number.isInteger(selisihL) ? selisihL : selisihL.toFixed(1);
           updated.sisa_t = tAsal > 0 ? tAsal : '';
           updated.sisa_qty = 1;
@@ -627,32 +627,27 @@ const Realisasi = () => {
     }
 
     // Front-end Kubikasi Validation
-    let totalDemandT = 0;
-    formData.carousel_items.forEach(item => {
-      totalDemandT += (Number(item.hasil2_t || 0) * Number(item.hasil2_qty || 0)) +
-        (Number(item.waste_kulit_t || 0) * Number(item.waste_kulit_qty || 1)) +
-        (Number(item.waste_potong_t || 0) * Number(item.waste_potong_qty || 1)) +
-        (Number(item.waste_produksi_t || 0) * Number(item.waste_produksi_qty || 1)) +
-        (Number(item.sispot_t || 0) * Number(item.sispot_qty || 1));
-    });
-
-    const sbHeight = Number(formData.hasil_t || 0) * Number(formData.hasil_qty || 1);
+    const buckets = getBucketsStatus();
 
     if (!isDraft) {
-      if (totalDemandT > sbHeight + 0.01) {
-        setAlertModal({
-          show: true,
-          message: `Ketinggian total demand WO dan Waste (${totalDemandT.toFixed(1)} cm) melebihi ketersediaan tinggi SB Vertical (${sbHeight.toFixed(1)} cm). Mohon cek kembali input Anda.`
-        });
+      if (buckets.isError) {
+        setAlertModal({ show: true, message: buckets.errorMessage });
         return;
-      } else if (sbHeight > 0 && totalDemandT < sbHeight - 0.01) {
+      }
+      if (buckets.bucketA > 0.001 || buckets.bucketB > 0.001) {
         setAlertModal({
           show: true,
-          message: `Masih ada sisa ketinggian yang belum terpakai (${(sbHeight - totalDemandT).toFixed(1)} cm). Sisa ketinggian harus habis terpakai dan dialokasikan sepenuhnya (ke Hasil, Waste, atau Sispot).`
+          message: `Masih ada sisa ketinggian yang belum terpakai (Utama: ${buckets.bucketA.toFixed(1)} cm, Sispot: ${buckets.bucketB.toFixed(1)} cm). Sisa ketinggian harus habis terpakai dan dialokasikan sepenuhnya (ke Hasil, Waste, atau Sispot).`
         });
         return;
       }
     }
+
+    // Attach source_block to each item before submission
+    submissionData.carousel_items = submissionData.carousel_items.map((item, idx) => ({
+      ...item,
+      source_block: buckets.itemSources[idx]?.source || 'Utama'
+    }));
 
     setIsSubmitting(true);
     try {
@@ -679,6 +674,18 @@ const Realisasi = () => {
     if (val === null || val === undefined || val === '') return '';
     const num = Number(val);
     return Number.isInteger(num) ? num : Number(num.toFixed(1));
+  };
+
+  const renderDim = (p, l, t, qty, ket = null) => {
+    if (!p && !l && !t) return '-';
+    const np = Number(p), nl = Number(l), nt = Number(t), nq = Number(qty);
+    if (np === 0 && nl === 0 && nt === 0) return '-';
+    return (
+      <span className="font-bold">
+        {Number(np.toFixed(2))}x{Number(nl.toFixed(2))}x{Number(nt.toFixed(2))} ({nq})
+        {ket ? <><br /><span className="text-gray-400 italic text-xs">{ket}</span></> : null}
+      </span>
+    );
   };
 
   const handleEdit = (row) => {
@@ -775,19 +782,53 @@ const Realisasi = () => {
   };
   const sisaColorClass = getSisaInputClass();
 
-  const getSisaTinggiGlobal = () => {
-    let totalUsed = 0;
-    formData.carousel_items.forEach(item => {
-      totalUsed += (Number(item.hasil2_t || 0) * Number(item.hasil2_qty || 0)) +
+  const getBucketsStatus = () => {
+    let bucketA = Number(formData.hasil_t || 0) * Number(formData.hasil_qty || 1);
+    let bucketB = Number(formData.sisa_l || 0) * Number(formData.sisa_qty || 1);
+    let maxL_B = Number(formData.sisa_t || 0);
+
+    const itemSources = [];
+    let isError = false;
+    let errorMessage = '';
+
+    formData.carousel_items.forEach((item, idx) => {
+      let t_needed = (Number(item.hasil2_t || 0) * Number(item.hasil2_qty || 0)) +
         (Number(item.waste_kulit_t || 0) * Number(item.waste_kulit_qty || 1)) +
         (Number(item.waste_potong_t || 0) * Number(item.waste_potong_qty || 1)) +
         (Number(item.waste_produksi_t || 0) * Number(item.waste_produksi_qty || 1)) +
         (Number(item.sispot_t || 0) * Number(item.sispot_qty || 1));
+
+      let source = 'Utama';
+      if (bucketA >= t_needed - 0.001) {
+        bucketA -= t_needed;
+      } else if (bucketA <= 0.001 && bucketB > 0) {
+        bucketB -= t_needed;
+        source = 'Sispot';
+        if (bucketB < -0.001) {
+          isError = true;
+          errorMessage = `Item WO #${idx + 1}: Ketinggian melebihi ketersediaan Sispot Vertikal.`;
+        }
+        if (Number(item.hasil_l || 0) > maxL_B + 0.001) {
+          isError = true;
+          errorMessage = `Item WO #${idx + 1}: Lebar demand (${item.hasil_l}) melebihi tinggi Sispot (${maxL_B}) yang ditidurkan.`;
+        }
+      } else {
+        if (bucketA > 0.001) {
+          isError = true;
+          errorMessage = `Item WO #${idx + 1}: Ketinggian melebihi sisa Hasil Utama (${bucketA.toFixed(1)} cm). Harap paskan (habiskan) sisa ini sebelum mengambil Sispot.`;
+        } else {
+          isError = true;
+          errorMessage = `Item WO #${idx + 1}: Ketinggian melebihi sisa yang tersedia.`;
+        }
+        bucketA -= t_needed;
+      }
+      itemSources.push({ source, sisaUtama: bucketA, sisaSispot: bucketB });
     });
-    return (Number(formData.hasil_t || 0) * Number(formData.hasil_qty || 1)) - totalUsed;
+
+    return { bucketA, bucketB, itemSources, isError, errorMessage, maxL_B };
   };
-  const sisaTinggiGlobal = getSisaTinggiGlobal();
-  const isSisaZero = sisaTinggiGlobal <= 0.001;
+  const buckets = getBucketsStatus();
+  const isSisaZero = buckets.bucketA <= 0.001 && buckets.bucketB <= 0.001;
 
   const getPLProps = (val, basePlaceholder, tVal) => {
     const isTValEmpty = tVal === '' || tVal === null || tVal === undefined;
@@ -821,9 +862,10 @@ const Realisasi = () => {
       };
     }
 
+    const availableMax = buckets.bucketA > 0.001 ? buckets.bucketA : buckets.bucketB;
     return {
       className: inputClass,
-      placeholder: `Max: ${sisaTinggiGlobal.toFixed(1)}`
+      placeholder: `Max: ${availableMax.toFixed(1)}`
     };
   };
 
@@ -842,7 +884,7 @@ const Realisasi = () => {
     }
 
     const tNum = Number(tVal || 0);
-    const sisaBeforeThis = sisaTinggiGlobal + (tNum * 1);
+    const sisaBeforeThis = (buckets.bucketA + buckets.bucketB) + (tNum * 1);
     const suggestQty = tNum > 0 ? Math.floor(sisaBeforeThis / tNum) : 0;
 
     return {
@@ -853,8 +895,19 @@ const Realisasi = () => {
   };
 
   const hasSisaPotong = Number(formData.sisa_p || 0) > 0 || Number(formData.sisa_l || 0) > 0 || Number(formData.sisa_t || 0) > 0 || Number(formData.sisa_qty || 0) > 0;
+  const hasUkuranAsal = Number(formData.asal_p || 0) > 0 || Number(formData.asal_l || 0) > 0 || Number(formData.asal_t || 0) > 0 || Number(formData.asal_qty || 0) > 0;
   const isSisaKeteranganEmpty = !formData.sisa_keterangan || formData.sisa_keterangan.trim() === '';
-  const isBagianIIILocked = hasSisaPotong && isSisaKeteranganEmpty;
+  const isKondisiBusaEmpty = !formData.keterangan_kondisi || formData.keterangan_kondisi.trim() === '';
+  
+  const isSampingBlocked = hasUkuranAsal && Number(formData.asal_l) > 0 && Number(formData.asal_l) === Number(formData.hasil_l);
+  const isDepanBlocked = hasUkuranAsal && Number(formData.asal_p) > 0 && Number(formData.asal_p) === Number(formData.hasil_p);
+  
+  const isAnomalySamping = isSampingBlocked && (Number(formData.waste_samping_t || 0) > 0 || Number(formData.waste_samping_qty || 0) > 0);
+  const isAnomalyDepan = isDepanBlocked && (Number(formData.waste_dpn_blk_t || 0) > 0 || Number(formData.waste_dpn_blk_qty || 0) > 0);
+  const isAnomalyVertical = isAnomalySamping || isAnomalyDepan;
+
+  const isBagianIILocked = hasUkuranAsal && isKondisiBusaEmpty;
+  const isBagianIIILocked = (hasSisaPotong && isSisaKeteranganEmpty) || (hasUkuranAsal && isKondisiBusaEmpty) || isAnomalyVertical;
 
   return (
     <div className="flex flex-col gap-6 animate-in fade-in duration-300 relative">
@@ -978,7 +1031,15 @@ const Realisasi = () => {
           </div>
 
           {/* SECTION 2: VERTICAL */}
-          <div className={`rounded-xl shadow-sm border overflow-hidden ${prefs.darkMode ? 'bg-[#0f172a] border-slate-700' : 'bg-white border-gray-200'}`}>
+          <div className={`rounded-xl shadow-sm border overflow-hidden relative ${prefs.darkMode ? 'bg-[#0f172a] border-slate-700' : 'bg-white border-gray-200'}`}>
+            {isBagianIILocked && (
+              <div className="absolute inset-0 z-20 flex items-center justify-center bg-white/60 dark:bg-[#0f172a]/60 backdrop-blur-sm">
+                <div className="bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400 font-bold px-6 py-4 rounded-xl shadow-lg border border-red-200 dark:border-red-800 flex items-center gap-3 animate-in fade-in zoom-in max-w-lg text-center">
+                  <AlertCircle size={24} className="flex-shrink-0" />
+                  Mohon isi "Keterangan Kondisi Busa" di Bagian I terlebih dahulu untuk membuka kunci.
+                </div>
+              </div>
+            )}
             <div className={`p-4 border-b font-bold flex items-center gap-2 ${prefs.darkMode ? 'border-slate-700 bg-slate-800 text-white' : 'border-gray-200 bg-gray-50 text-navy-dark'}`}>
               Bagian II: Proses Level 1 - Mesin Vertical (Potongan Awal/Slab)
             </div>
@@ -1012,6 +1073,7 @@ const Realisasi = () => {
                   <input type="number" step="any" name="waste_samping_t" value={formData.waste_samping_t} onChange={handleChange} placeholder="T" className={inputClass} />
                   <input type="number" name="waste_samping_qty" value={formData.waste_samping_qty} onChange={handleChange} placeholder="Qty" className={inputClass} />
                 </div>
+                {isAnomalySamping && <p className="text-xs text-red-500 font-bold mt-1">⚠️ Anomali (Lebar Asal & Hasil Sama = No Waste)</p>}
               </div>
 
               <div className="col-span-1 lg:col-span-2">
@@ -1022,6 +1084,7 @@ const Realisasi = () => {
                   <input type="number" step="any" name="waste_dpn_blk_t" value={formData.waste_dpn_blk_t} onChange={handleChange} placeholder="T" className={inputClass} />
                   <input type="number" name="waste_dpn_blk_qty" value={formData.waste_dpn_blk_qty} onChange={handleChange} placeholder="Qty" className={inputClass} />
                 </div>
+                {isAnomalyDepan && <p className="text-xs text-red-500 font-bold mt-1">⚠️ Anomali (Panjang Asal & Hasil Sama = No Waste)</p>}
               </div>
 
               <div className="col-span-1 lg:col-span-2">
@@ -1060,9 +1123,13 @@ const Realisasi = () => {
           <div className={`rounded-xl shadow-sm border overflow-hidden relative ${prefs.darkMode ? 'bg-[#0f172a] border-slate-700' : 'bg-white border-gray-200'}`}>
             {isBagianIIILocked && (
               <div className="absolute inset-0 z-20 flex items-center justify-center bg-white/60 dark:bg-[#0f172a]/60 backdrop-blur-sm">
-                <div className="bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400 font-bold px-6 py-4 rounded-xl shadow-lg border border-red-200 dark:border-red-800 flex items-center gap-3 animate-in fade-in zoom-in">
-                  <AlertCircle size={24} />
-                  Mohon isi "Keterangan Sisa Potongan" di Bagian II terlebih dahulu untuk membuka kunci.
+                <div className="bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400 font-bold px-6 py-4 rounded-xl shadow-lg border border-red-200 dark:border-red-800 flex items-center gap-3 animate-in fade-in zoom-in max-w-lg text-center">
+                  <AlertCircle size={24} className="flex-shrink-0" />
+                  {isKondisiBusaEmpty 
+                    ? 'Mohon isi "Keterangan Kondisi Busa" di Bagian I terlebih dahulu untuk membuka kunci.' 
+                    : isAnomalyVertical
+                      ? 'Terdeteksi Anomali pada Bagian II: Ukuran P/L Asal dan Hasil Potong sama (No Waste), namun T atau Qty Waste terisi. Harap jadikan 0 sebelum lanjut.'
+                      : 'Mohon isi "Keterangan Sisa Potongan" di Bagian II terlebih dahulu untuk membuka kunci.'}
                 </div>
               </div>
             )}
@@ -1070,40 +1137,54 @@ const Realisasi = () => {
               <div className="flex items-center gap-4">
                 <span className="font-bold">Bagian III: Proses Level 2 (Horizontal / Carousel) - Multi WO</span>
               </div>
-              <button type="button" onClick={addWO} className="flex items-center justify-center gap-1 text-xs px-4 py-2 bg-accent-blue text-navy-dark font-bold rounded hover:bg-opacity-80 transition-colors shadow-sm">
-                <Plus size={14} /> Tambah WO
-              </button>
             </div>
 
             <div className="p-4 flex flex-col gap-6 bg-gray-50 dark:bg-[#0f172a]/50">
-              {formData.carousel_items.map((item, index) => (
-                <div key={index} className={`relative p-4 border rounded-lg shadow-sm ${prefs.darkMode ? 'bg-[#1e293b] border-slate-600' : 'bg-white border-gray-200'}`}>
-                  {index > 0 && (
-                    <button type="button" onClick={() => removeWO(index)} className="absolute top-2 right-2 p-2 text-red-500 hover:bg-red-50 rounded-full dark:hover:bg-red-900/20 z-10" title="Hapus WO">
-                      <Trash2 size={16} />
-                    </button>
-                  )}
-                  <div className="flex flex-col md:flex-row md:items-center justify-between border-b pb-2 mb-4">
-                    <h4 className="font-bold text-accent-blue flex flex-col md:flex-row items-start md:items-center gap-2">
-                      Item WO #{index + 1}
-                      <span className={`text-xs px-2 py-0.5 rounded font-bold border ${sisaTinggiGlobal > 0
-                          ? (prefs.darkMode ? 'bg-green-900/30 text-green-400 border-green-800' : 'bg-green-100 text-green-700 border-green-200')
-                          : sisaTinggiGlobal === 0
-                            ? (prefs.darkMode ? 'bg-blue-900/30 text-blue-400 border-blue-800' : 'bg-blue-100 text-blue-700 border-blue-200')
-                            : (prefs.darkMode ? 'bg-red-900/30 text-red-400 border-red-800' : 'bg-red-100 text-red-700 border-red-200')
-                        }`}>
-                        Sisa Tinggi: {sisaTinggiGlobal.toFixed(1)} cm
-                      </span>
-                    </h4>
-                    <div className="flex flex-wrap gap-2 text-xs text-gray-500 dark:text-gray-400 mt-2 md:mt-0 pr-8">
-                      <span className="bg-white dark:bg-slate-700 px-2 py-1 rounded shadow-sm border border-gray-200 dark:border-slate-600">
-                        Barcode: <strong className="text-accent-blue">{formData.no_barcode || '-'}</strong>
-                      </span>
-                      <span className="bg-white dark:bg-slate-700 px-2 py-1 rounded shadow-sm border border-gray-200 dark:border-slate-600">
-                        Hasil Vertical: <strong className="text-accent-blue">{formData.hasil_p || '0'} x {formData.hasil_l || '0'} x {formData.hasil_t || '0'} ({formData.hasil_qty || '0'})</strong>
-                      </span>
+              {formData.carousel_items.map((item, index) => {
+                const sourceInfo = buckets.itemSources[index] || { source: 'Utama', sisaUtama: 0, sisaSispot: 0 };
+                const sisaTinggi = sourceInfo.source === 'Utama' ? sourceInfo.sisaUtama : sourceInfo.sisaSispot;
+                const sourceLabel = sourceInfo.source === 'Utama' ? 'Hasil Utama' : 'Sispot Vertikal';
+                const labelColorClass = sourceInfo.source === 'Utama' 
+                  ? 'bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-900/30 dark:text-blue-400 dark:border-blue-800'
+                  : 'bg-purple-100 text-purple-700 border-purple-200 dark:bg-purple-900/30 dark:text-purple-400 dark:border-purple-800';
+
+                return (
+                  <div key={index} className={`relative p-4 border rounded-lg shadow-sm ${prefs.darkMode ? 'bg-[#1e293b] border-slate-600' : 'bg-white border-gray-200'}`}>
+                    {index > 0 && (
+                      <button type="button" onClick={() => removeWO(index)} className="absolute top-2 right-2 p-2 text-red-500 hover:bg-red-50 rounded-full dark:hover:bg-red-900/20 z-10" title="Hapus WO">
+                        <Trash2 size={16} />
+                      </button>
+                    )}
+                    <div className="flex flex-col md:flex-row md:items-center justify-between border-b pb-2 mb-4">
+                      <h4 className="font-bold text-accent-blue flex flex-col md:flex-row items-start md:items-center gap-2">
+                        Item WO #{index + 1}
+                        <span className={`text-xs px-2 py-0.5 rounded font-bold border ${labelColorClass}`}>
+                          Sumber: {sourceLabel}
+                        </span>
+                        <span className={`text-xs px-2 py-0.5 rounded font-bold border ${sisaTinggi > 0
+                            ? (prefs.darkMode ? 'bg-green-900/30 text-green-400 border-green-800' : 'bg-green-100 text-green-700 border-green-200')
+                            : sisaTinggi === 0
+                              ? (prefs.darkMode ? 'bg-blue-900/30 text-blue-400 border-blue-800' : 'bg-blue-100 text-blue-700 border-blue-200')
+                              : (prefs.darkMode ? 'bg-red-900/30 text-red-400 border-red-800' : 'bg-red-100 text-red-700 border-red-200')
+                          }`}>
+                          Sisa Tinggi: {sisaTinggi.toFixed(1)} cm
+                        </span>
+                      </h4>
+                      <div className="flex flex-wrap gap-2 text-xs text-gray-500 dark:text-gray-400 mt-2 md:mt-0 pr-8">
+                        <span className="bg-white dark:bg-slate-700 px-2 py-1 rounded shadow-sm border border-gray-200 dark:border-slate-600">
+                          Barcode: <strong className="text-accent-blue">{formData.no_barcode || '-'}</strong>
+                        </span>
+                        {sourceInfo.source === 'Utama' ? (
+                          <span className="bg-white dark:bg-slate-700 px-2 py-1 rounded shadow-sm border border-gray-200 dark:border-slate-600">
+                            Hasil Vertical: <strong className="text-accent-blue">{formData.hasil_p || '0'} x {formData.hasil_l || '0'} x {formData.hasil_t || '0'} ({formData.hasil_qty || '0'})</strong>
+                          </span>
+                        ) : (
+                          <span className="bg-purple-50 dark:bg-slate-700 px-2 py-1 rounded shadow-sm border border-purple-200 dark:border-slate-600">
+                            Sispot Vertical: <strong className="text-purple-600">{formData.sisa_p || '0'} x {formData.sisa_l || '0'} x {formData.sisa_t || '0'} ({formData.sisa_qty || '0'})</strong>
+                          </span>
+                        )}
+                      </div>
                     </div>
-                  </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-12 gap-4">
 
@@ -1278,9 +1359,18 @@ const Realisasi = () => {
                         <input type="text" name="dt_keterangan" value={item.dt_keterangan} onChange={(e) => handleCarouselChange(index, e)} placeholder="Keterangan..." className={`${inputClass} col-span-4`} />
                       </div>
                     </div>
+
+                    {index === formData.carousel_items.length - 1 && (
+                      <div className="col-span-1 lg:col-span-12 flex justify-end mt-4 border-t pt-4 border-gray-100 dark:border-slate-700">
+                        <button type="button" onClick={addWO} className="flex items-center justify-center gap-1 text-xs px-4 py-2 bg-accent-blue text-navy-dark font-bold rounded hover:bg-opacity-80 transition-colors shadow-sm">
+                          <Plus size={14} /> Tambah WO
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </div>
-              ))}
+              );
+              })}
             </div>
           </div>
 
@@ -1454,10 +1544,10 @@ const Realisasi = () => {
                 <div>
                   <h4 className="font-bold text-lg mb-4 text-accent-blue border-b pb-2">II. Level 1 (Vertical) - Mesin {selectedDetail.v_no_mesin || '-'}</h4>
                   <div className="grid grid-cols-2 gap-4 text-sm">
-                    <div><span className="block text-gray-500 text-xs">Hasil (PxLxTxQty)</span><span className="font-bold">{selectedDetail.v_hasil_p}x{selectedDetail.v_hasil_l}x{selectedDetail.v_hasil_t} ({selectedDetail.v_hasil_qty})</span></div>
-                    <div><span className="block text-gray-500 text-xs">Sisa Potong (PxLxTxQty)</span><span className="font-bold">{selectedDetail.sisa_p}x{selectedDetail.sisa_l}x{selectedDetail.sisa_t} ({selectedDetail.sisa_qty})<br /><span className="text-gray-400 italic text-xs">{selectedDetail.sisa_keterangan}</span></span></div>
-                    <div><span className="block text-gray-500 text-xs">Waste Samping Kiri Kanan (PxLxTxQty)</span><span className="font-bold">{selectedDetail.waste_samping_p}x{selectedDetail.waste_samping_l}x{selectedDetail.waste_samping_t} ({selectedDetail.waste_samping_qty})</span></div>
-                    <div><span className="block text-gray-500 text-xs">Waste Depan Belakang (PxLxTxQty)</span><span className="font-bold">{selectedDetail.waste_dpn_blk_p}x{selectedDetail.waste_dpn_blk_l}x{selectedDetail.waste_dpn_blk_t} ({selectedDetail.waste_dpn_blk_qty})</span></div>
+                    <div><span className="block text-gray-500 text-xs">Hasil (PxLxTxQty)</span>{renderDim(selectedDetail.v_hasil_p, selectedDetail.v_hasil_l, selectedDetail.v_hasil_t, selectedDetail.v_hasil_qty)}</div>
+                    <div><span className="block text-gray-500 text-xs">Sisa Potong (PxLxTxQty)</span>{renderDim(selectedDetail.sisa_p, selectedDetail.sisa_l, selectedDetail.sisa_t, selectedDetail.sisa_qty, selectedDetail.sisa_keterangan)}</div>
+                    <div><span className="block text-gray-500 text-xs">Waste Samping Kiri Kanan (PxLxTxQty)</span>{renderDim(selectedDetail.waste_samping_p, selectedDetail.waste_samping_l, selectedDetail.waste_samping_t, selectedDetail.waste_samping_qty)}</div>
+                    <div><span className="block text-gray-500 text-xs">Waste Depan Belakang (PxLxTxQty)</span>{renderDim(selectedDetail.waste_dpn_blk_p, selectedDetail.waste_dpn_blk_l, selectedDetail.waste_dpn_blk_t, selectedDetail.waste_dpn_blk_qty)}</div>
                     <div className="col-span-2"><span className="block text-gray-500 text-xs">Downtime</span><span className="font-bold">{selectedDetail.dt_kode ? `${selectedDetail.dt_kode} (${selectedDetail.dt_jam_awal} - ${selectedDetail.dt_jam_akhir})` : '-'}</span></div>
                   </div>
                 </div>
@@ -1472,7 +1562,7 @@ const Realisasi = () => {
                     {selectedDetail.carousel_items.map((item, idx) => (
                       <div key={idx} className={`p-4 border rounded-lg ${prefs.darkMode ? 'border-slate-700 bg-slate-800' : 'border-gray-200 bg-gray-50'}`}>
                         <h5 className="font-bold text-md mb-2 flex items-center justify-between">
-                          <span className="text-purple-500">WO: {item.no_wo || '-'}</span>
+                          <span className="text-purple-500">WO: {item.no_wo || '-'} {item.keterangan ? <span className="text-gray-400 text-xs italic font-normal ml-2">({item.keterangan})</span> : ''}</span>
                           <span className={`text-xs px-2 py-1 rounded-full ${item.status === 'OK' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
                             {item.status}
                           </span>
@@ -1480,11 +1570,11 @@ const Realisasi = () => {
                         <div className="grid grid-cols-2 md:grid-cols-5 gap-4 text-sm mt-3">
                           <div><span className="block text-gray-500 text-xs">Mesin</span><span className="font-bold">{item.tipe_mesin} ({item.no_mesin})</span></div>
                           {item.tipe_mesin === 'Carousel' && <div><span className="block text-gray-500 text-xs">No Disk</span><span className="font-bold">{item.no_disk || '-'}</span></div>}
-                          <div><span className="block text-gray-500 text-xs">Hasil (PxLxTxQty)</span><span className="font-bold">{item.hasil_p}x{item.hasil_l}x{item.hasil_t} ({item.hasil_qty})</span></div>
-                          <div><span className="block text-gray-500 text-xs">Waste Kulit (PxLxTxQty)</span><span className="font-bold">{item.waste_kulit_p}x{item.waste_kulit_l}x{item.waste_kulit_t} ({item.waste_kulit_qty})</span></div>
-                          <div><span className="block text-gray-500 text-xs">Waste Potong (PxLxTxQty)</span><span className="font-bold">{item.waste_potong_p}x{item.waste_potong_l}x{item.waste_potong_t} ({item.waste_potong_qty})</span></div>
-                          <div><span className="block text-gray-500 text-xs">Waste Produksi (PxLxTxQty)</span><span className="font-bold">{item.waste_produksi_p}x{item.waste_produksi_l}x{item.waste_produksi_t} ({item.waste_produksi_qty})<br /><span className="text-gray-400 italic text-xs">{item.waste_produksi_keterangan}</span></span></div>
-                          <div><span className="block text-gray-500 text-xs">Sispot (PxLxTxQty)</span><span className="font-bold">{item.sispot_p}x{item.sispot_l}x{item.sispot_t} ({item.sispot_qty})<br /><span className="text-gray-400 italic text-xs">{item.sispot_keterangan}</span></span></div>
+                          <div><span className="block text-gray-500 text-xs">Hasil (PxLxTxQty)</span>{renderDim(item.hasil_p, item.hasil_l, item.hasil_t, item.hasil_qty)}</div>
+                          <div><span className="block text-gray-500 text-xs">Waste Kulit (PxLxTxQty)</span>{renderDim(item.waste_kulit_p, item.waste_kulit_l, item.waste_kulit_t, item.waste_kulit_qty)}</div>
+                          <div><span className="block text-gray-500 text-xs">Waste Potong (PxLxTxQty)</span>{renderDim(item.waste_potong_p, item.waste_potong_l, item.waste_potong_t, item.waste_potong_qty)}</div>
+                          <div><span className="block text-gray-500 text-xs">Waste Produksi (PxLxTxQty)</span>{renderDim(item.waste_produksi_p, item.waste_produksi_l, item.waste_produksi_t, item.waste_produksi_qty, item.waste_produksi_keterangan)}</div>
+                          <div><span className="block text-gray-500 text-xs">Sispot (PxLxTxQty)</span>{renderDim(item.sispot_p, item.sispot_l, item.sispot_t, item.sispot_qty, item.sispot_keterangan)}</div>
                           <div className="col-span-2"><span className="block text-gray-500 text-xs">Downtime</span><span className="font-bold">{item.dt_kode ? `${item.dt_kode} (${item.dt_jam_awal} - ${item.dt_jam_akhir})` : '-'}</span></div>
                           {item.status === 'Reject' && (
                             <div className="col-span-2"><span className="block text-red-400 text-xs">Alasan Reject</span><span className="font-bold text-red-500">{item.alasan_reject}</span></div>

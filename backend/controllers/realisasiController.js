@@ -23,27 +23,66 @@ exports.createRealisasi = async (req, res) => {
         } = req.body;
 
         // Validasi Kubikasi (Tinggi) - BYPASS JIKA DRAFT
-        let totalDemandT = 0;
         if (status !== 'DRAFT' && carousel_items && carousel_items.length > 0) {
+            let totalDemandT_Utama = 0;
+            let totalDemandT_Sispot = 0;
+            
             for (const item of carousel_items) {
                 const itemTotalT = (Number(item.hasil2_t || 0) * Number(item.hasil2_qty || 0)) + 
                                    (Number(item.waste_kulit_t || 0) * Number(item.waste_kulit_qty || 1)) + 
                                    (Number(item.waste_potong_t || 0) * Number(item.waste_potong_qty || 1)) + 
                                    (Number(item.waste_produksi_t || 0) * Number(item.waste_produksi_qty || 1)) + 
                                    (Number(item.sispot_t || 0) * Number(item.sispot_qty || 1));
-                totalDemandT += itemTotalT;
+                
+                if (item.source_block === 'Sispot') {
+                    totalDemandT_Sispot += itemTotalT;
+                    // Validate L rotation
+                    const sispotTinggi = Number(sisa_t || 0);
+                    if (Number(item.hasil2_l || item.hasil_l || 0) > sispotTinggi + 0.001) {
+                        await connection.rollback();
+                        return res.status(400).json({ 
+                            message: `Validasi Gagal: Lebar demand WO Sispot melebihi Tinggi Sispot (${sispotTinggi} cm).` 
+                        });
+                    }
+                } else {
+                    totalDemandT_Utama += itemTotalT;
+                }
             }
-            const sbHeight = Number(hasil_t || 0) * Number(hasil_qty || 1);
-            if (totalDemandT > sbHeight + 0.01) {
+
+            const sbHeightUtama = Number(hasil_t || 0) * Number(hasil_qty || 1);
+            const sbHeightSispot = Number(sisa_l || 0) * Number(sisa_qty || 1);
+
+            if (totalDemandT_Utama > sbHeightUtama + 0.01) {
                 await connection.rollback();
                 return res.status(400).json({ 
-                    message: `Kubikasi Gagal: Ketinggian demand (${totalDemandT.toFixed(2)} cm) melebihi tinggi SB Vertical (${sbHeight.toFixed(2)} cm)` 
+                    message: `Kubikasi Gagal: Ketinggian demand Utama (${totalDemandT_Utama.toFixed(2)} cm) melebihi tinggi SB Vertical (${sbHeightUtama.toFixed(2)} cm)` 
                 });
-            } else if (sbHeight > 0 && totalDemandT < sbHeight - 0.01) {
+            } else if (sbHeightUtama > 0 && totalDemandT_Utama < sbHeightUtama - 0.01 && totalDemandT_Sispot > 0) {
+                // If they use Sispot, Utama MUST be fully consumed first
                 await connection.rollback();
                 return res.status(400).json({ 
-                    message: `Validasi Gagal: Masih ada sisa ketinggian yang belum terpakai (${(sbHeight - totalDemandT).toFixed(2)} cm). Sisa ketinggian harus habis terpakai.` 
+                    message: `Validasi Gagal: Masih ada sisa ketinggian Utama (${(sbHeightUtama - totalDemandT_Utama).toFixed(2)} cm). Harap habiskan Hasil Utama sebelum memotong Sispot.` 
                 });
+            }
+
+            if (totalDemandT_Sispot > sbHeightSispot + 0.01) {
+                await connection.rollback();
+                return res.status(400).json({ 
+                    message: `Kubikasi Gagal: Ketinggian demand Sispot (${totalDemandT_Sispot.toFixed(2)} cm) melebihi ketersediaan Sispot (${sbHeightSispot.toFixed(2)} cm)` 
+                });
+            }
+
+            if (sbHeightUtama > 0 && totalDemandT_Utama < sbHeightUtama - 0.01 && totalDemandT_Sispot === 0) {
+                 await connection.rollback();
+                 return res.status(400).json({ 
+                     message: `Validasi Gagal: Masih ada sisa ketinggian Utama yang belum terpakai (${(sbHeightUtama - totalDemandT_Utama).toFixed(2)} cm).` 
+                 });
+            }
+            if (sbHeightSispot > 0 && totalDemandT_Sispot > 0 && totalDemandT_Sispot < sbHeightSispot - 0.01) {
+                 await connection.rollback();
+                 return res.status(400).json({ 
+                     message: `Validasi Gagal: Masih ada sisa ketinggian Sispot yang belum terpakai (${(sbHeightSispot - totalDemandT_Sispot).toFixed(2)} cm).` 
+                 });
             }
         }
 
@@ -85,13 +124,13 @@ exports.createRealisasi = async (req, res) => {
             for (const item of carousel_items) {
                 await connection.query(
             `INSERT INTO realisasi_carousel 
-            (identitas_id, no_mesin, tipe_mesin, no_disk, no_wo, keterangan, hasil_p, hasil_l, hasil_t, hasil_qty, status, alasan_reject,
+            (identitas_id, no_mesin, tipe_mesin, no_disk, no_wo, keterangan, source_block, hasil_p, hasil_l, hasil_t, hasil_qty, status, alasan_reject,
             waste_kulit_p, waste_kulit_l, waste_kulit_t, waste_kulit_qty, 
             sispot_p, sispot_l, sispot_t, sispot_qty, sispot_keterangan,
             waste_potong_p, waste_potong_l, waste_potong_t, waste_potong_qty, 
             waste_produksi_p, waste_produksi_l, waste_produksi_t, waste_produksi_qty, waste_produksi_keterangan,
             dt_kode, dt_jam_awal, dt_jam_akhir, dt_keterangan) 
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             [
                 identitasId,
                 item.no_mesin || '',
@@ -99,6 +138,7 @@ exports.createRealisasi = async (req, res) => {
                 item.no_disk || '',
                 item.no_wo || '',
                 item.keterangan || '',
+                item.source_block || 'Utama',
                 item.hasil2_p || 0, item.hasil2_l || 0, item.hasil2_t || 0, item.hasil2_qty || 0,
                 item.status || 'OK', item.alasan_reject || '',
                 item.waste_kulit_p || 0, item.waste_kulit_l || 0, item.waste_kulit_t || 0, item.waste_kulit_qty || 0,
@@ -234,26 +274,64 @@ exports.updateRealisasi = async (req, res) => {
         } = req.body;
 
         // Validasi Kubikasi - BYPASS JIKA DRAFT
-        let totalDemandT = 0;
         if (status !== 'DRAFT' && carousel_items && carousel_items.length > 0) {
+            let totalDemandT_Utama = 0;
+            let totalDemandT_Sispot = 0;
+            
             for (const item of carousel_items) {
-                totalDemandT += (Number(item.hasil2_t || item.hasil_t || 0) * Number(item.hasil2_qty || item.hasil_qty || 0)) + 
-                                (Number(item.waste_kulit_t || 0) * Number(item.waste_kulit_qty || 1)) + 
-                                (Number(item.waste_potong_t || 0) * Number(item.waste_potong_qty || 1)) + 
-                                (Number(item.waste_produksi_t || 0) * Number(item.waste_produksi_qty || 1)) + 
-                                (Number(item.sispot_t || 0) * Number(item.sispot_qty || 1));
+                const itemTotalT = (Number(item.hasil2_t || item.hasil_t || 0) * Number(item.hasil2_qty || item.hasil_qty || 0)) + 
+                                   (Number(item.waste_kulit_t || 0) * Number(item.waste_kulit_qty || 1)) + 
+                                   (Number(item.waste_potong_t || 0) * Number(item.waste_potong_qty || 1)) + 
+                                   (Number(item.waste_produksi_t || 0) * Number(item.waste_produksi_qty || 1)) + 
+                                   (Number(item.sispot_t || 0) * Number(item.sispot_qty || 1));
+                
+                if (item.source_block === 'Sispot') {
+                    totalDemandT_Sispot += itemTotalT;
+                    const sispotTinggi = Number(sisa_t || 0);
+                    if (Number(item.hasil2_l || item.hasil_l || 0) > sispotTinggi + 0.001) {
+                        await connection.rollback();
+                        return res.status(400).json({ 
+                            message: `Validasi Gagal: Lebar demand WO Sispot melebihi Tinggi Sispot (${sispotTinggi} cm).` 
+                        });
+                    }
+                } else {
+                    totalDemandT_Utama += itemTotalT;
+                }
             }
-            const sbHeight = Number(hasil_t || 0) * Number(hasil_qty || 1);
-            if (totalDemandT > sbHeight + 0.01) {
+
+            const sbHeightUtama = Number(hasil_t || 0) * Number(hasil_qty || 1);
+            const sbHeightSispot = Number(sisa_l || 0) * Number(sisa_qty || 1);
+
+            if (totalDemandT_Utama > sbHeightUtama + 0.01) {
                 await connection.rollback();
                 return res.status(400).json({ 
-                    message: `Kubikasi Gagal: Ketinggian demand (${totalDemandT.toFixed(2)} cm) melebihi tinggi SB Vertical (${sbHeight.toFixed(2)} cm)` 
+                    message: `Kubikasi Gagal: Ketinggian demand Utama (${totalDemandT_Utama.toFixed(2)} cm) melebihi tinggi SB Vertical (${sbHeightUtama.toFixed(2)} cm)` 
                 });
-            } else if (sbHeight > 0 && totalDemandT < sbHeight - 0.01) {
+            } else if (sbHeightUtama > 0 && totalDemandT_Utama < sbHeightUtama - 0.01 && totalDemandT_Sispot > 0) {
                 await connection.rollback();
                 return res.status(400).json({ 
-                    message: `Validasi Gagal: Masih ada sisa ketinggian yang belum terpakai (${(sbHeight - totalDemandT).toFixed(2)} cm). Sisa ketinggian harus habis terpakai.` 
+                    message: `Validasi Gagal: Masih ada sisa ketinggian Utama (${(sbHeightUtama - totalDemandT_Utama).toFixed(2)} cm). Harap habiskan Hasil Utama sebelum memotong Sispot.` 
                 });
+            }
+
+            if (totalDemandT_Sispot > sbHeightSispot + 0.01) {
+                await connection.rollback();
+                return res.status(400).json({ 
+                    message: `Kubikasi Gagal: Ketinggian demand Sispot (${totalDemandT_Sispot.toFixed(2)} cm) melebihi ketersediaan Sispot (${sbHeightSispot.toFixed(2)} cm)` 
+                });
+            }
+
+            if (sbHeightUtama > 0 && totalDemandT_Utama < sbHeightUtama - 0.01 && totalDemandT_Sispot === 0) {
+                 await connection.rollback();
+                 return res.status(400).json({ 
+                     message: `Validasi Gagal: Masih ada sisa ketinggian Utama yang belum terpakai (${(sbHeightUtama - totalDemandT_Utama).toFixed(2)} cm).` 
+                 });
+            }
+            if (sbHeightSispot > 0 && totalDemandT_Sispot > 0 && totalDemandT_Sispot < sbHeightSispot - 0.01) {
+                 await connection.rollback();
+                 return res.status(400).json({ 
+                     message: `Validasi Gagal: Masih ada sisa ketinggian Sispot yang belum terpakai (${(sbHeightSispot - totalDemandT_Sispot).toFixed(2)} cm).` 
+                 });
             }
         }
 
@@ -295,15 +373,16 @@ exports.updateRealisasi = async (req, res) => {
             for (const item of carousel_items) {
                 await connection.query(
                       `INSERT INTO realisasi_carousel 
-                      (identitas_id, no_mesin, tipe_mesin, no_disk, no_wo, keterangan, hasil_p, hasil_l, hasil_t, hasil_qty, status, alasan_reject,
+                      (identitas_id, no_mesin, tipe_mesin, no_disk, no_wo, keterangan, source_block, hasil_p, hasil_l, hasil_t, hasil_qty, status, alasan_reject,
                       waste_kulit_p, waste_kulit_l, waste_kulit_t, waste_kulit_qty, sispot_p, sispot_l, sispot_t, sispot_qty, sispot_keterangan,
-                      waste_potong_p, waste_potong_l, waste_potong_t, waste_potong_qty, waste_produksi_p, waste_produksi_l, waste_produksi_t, waste_produksi_qty,
+                      waste_potong_p, waste_potong_l, waste_potong_t, waste_potong_qty, waste_produksi_p, waste_produksi_l, waste_produksi_t, waste_produksi_qty, waste_produksi_keterangan,
                       dt_kode, dt_jam_awal, dt_jam_akhir, dt_keterangan) 
-                      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
                       [
                           id,
                           item.no_mesin || '',
                           item.tipe_mesin || 'Horizontal', item.no_disk || '', item.no_wo || '', item.keterangan || '',
+                          item.source_block || 'Utama',
                           item.hasil2_p || item.hasil_p || 0, item.hasil2_l || item.hasil_l || 0, item.hasil2_t || item.hasil_t || 0, item.hasil2_qty || item.hasil_qty || 0,
                           item.status || 'OK', item.alasan_reject || '',
                           item.waste_kulit_p || 0, item.waste_kulit_l || 0, item.waste_kulit_t || 0, item.waste_kulit_qty || 0,
@@ -369,6 +448,24 @@ exports.getHasilRealisasiVertikal = async (req, res) => {
         const [matrixVertikal] = await db.query("SELECT nama_item, cycle_time_menit, varians FROM cycle_time_matrix WHERE tipe_mesin = 'Vertikal'");
         const sortedVertikal = matrixVertikal.sort((a, b) => b.nama_item.length - a.nama_item.length);
 
+        // 3. Fetch Carousel items that used Sispot
+        const [sispotUsedRows] = await db.query(`
+            SELECT identitas_id, 
+                   SUM((hasil_p * hasil_l * hasil_t * hasil_qty) + 
+                       (waste_kulit_p * waste_kulit_l * waste_kulit_t * waste_kulit_qty) + 
+                       (sispot_p * sispot_l * sispot_t * sispot_qty) + 
+                       (waste_potong_p * waste_potong_l * waste_potong_t * waste_potong_qty) + 
+                       (waste_produksi_p * waste_produksi_l * waste_produksi_t * waste_produksi_qty)) / 1000000 AS total_sispot_used_m3
+            FROM realisasi_carousel 
+            WHERE source_block = 'Sispot'
+            GROUP BY identitas_id
+        `);
+        const sispotUsedMap = {};
+        sispotUsedRows.forEach(row => {
+            sispotUsedMap[row.identitas_id] = Number(row.total_sispot_used_m3 || 0);
+        });
+
+
         // 3. Group and Process Logic
         const groupData = {};
         const calcVol = (p, l, t, qty) => (Number(p||0) * Number(l||0) * Number(t||0) * Number(qty||0)) / 1000000;
@@ -392,6 +489,11 @@ exports.getHasilRealisasiVertikal = async (req, res) => {
             const m3_wo = calcVol(row.hasil_p, row.hasil_l, row.hasil_t, row.hasil_qty);
             
             let m3_sisa_potong = g.m3_asal - g.total_m3_demand - g.m3_waste_samping - g.m3_waste_depan;
+            
+            // Deduct from Sispot Used by Carousel
+            const sispotUsed = sispotUsedMap[row.identitas_id] || 0;
+            m3_sisa_potong -= sispotUsed;
+            
             if (m3_sisa_potong < 0) m3_sisa_potong = 0;
 
             const cleanKualitas = (row.kualitas || '').replace(/\s+/g, '').toLowerCase();
@@ -629,7 +731,7 @@ exports.getHasilRealisasiHorizontal = async (req, res) => {
             const total_sum_ct = sum_c1 + sum_c2 + sum_ptu + sum_pma + sum_pmu + sum_c3;
 
             let status_validasi = "PASS";
-            const tinggiAsal = Number(row.vertikal_t || 0);
+            const tinggiAsal = Number(row.vertikal_t || 0) * qtyBahanBakuAsal;
             if (g.total_tinggi_demand > tinggiAsal + 0.00001) {
                 status_validasi = `WARNING - Over-Height: Total tinggi demand (${g.total_tinggi_demand.toFixed(2)}) melebihi tinggi Induk (${tinggiAsal.toFixed(2)})`;
             }
