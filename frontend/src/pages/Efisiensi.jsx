@@ -1,9 +1,12 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import axios from 'axios';
-import { Settings, Users, Activity, Loader, Layers, Edit2, Check, X, BarChart2, AlertTriangle, WrenchIcon, ShieldCheck, Clock } from 'lucide-react';
+import { Settings, Users, Activity, Loader, Layers, Edit2, Check, X, BarChart2, AlertTriangle, WrenchIcon, ShieldCheck, Clock, Calendar } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line, ReferenceLine } from 'recharts';
+import { useSettings } from '../context/SettingsContext';
 
 const Efisiensi = () => {
+  const { prefs } = useSettings();
+  const isDark = prefs?.darkMode;
   const [tanggal, setTanggal] = useState(new Date().toISOString().split('T')[0]);
   const [totalWaktu, setTotalWaktu] = useState(0);
   const [waktuPerMesinData, setWaktuPerMesinData] = useState({});
@@ -525,19 +528,58 @@ const Efisiensi = () => {
     );
   };
 
-  if (loading) {
-    return (
-      <div className="flex flex-col items-center justify-center h-full text-accent-blue">
-         <Loader size={36} className="animate-spin mb-4" />
-         <p className="font-bold text-navy-dark">Mengkalkulasi Prediksi Produksi...</p>
-      </div>
-    );
-  }
+  const isToday = tanggal === new Date().toISOString().split('T')[0];
 
   return (
-    <div className="flex flex-col gap-8 animate-in fade-in duration-300 pb-10">
-      {/* KARTU ATAS: OEE PER MESIN */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+    <div className={`flex flex-col gap-6 animate-in fade-in duration-300 pb-10 ${isDark ? 'text-white' : 'text-gray-800'}`}>
+      {/* BANNER HEADER */}
+      <div className={`p-5 rounded-2xl border shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4 ${isDark ? 'bg-slate-800/80 border-slate-700' : 'bg-white border-gray-200'}`}>
+        <div>
+          <h1 className={`text-2xl font-black flex items-center gap-2.5 ${isDark ? 'text-white' : 'text-navy-dark'}`}>
+            <Activity className="text-accent-blue" size={28} />
+            Predictive OEE Planning
+          </h1>
+          <p className={`text-xs mt-1 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+            Simulasi estimasi performa efektivitas mesin (Availability, Performance, Quality) berbasis rencana kerja SPK
+          </p>
+        </div>
+
+        {/* Filter Pemilih Tanggal Rencana */}
+        <div className="flex items-center gap-2.5">
+          <div className={`flex items-center gap-2 px-3 py-2 rounded-xl border shadow-sm ${isDark ? 'bg-slate-900 border-slate-700' : 'bg-gray-50 border-gray-200'}`}>
+            <Calendar size={16} className="text-blue-500 shrink-0" />
+            <label className={`text-xs font-bold whitespace-nowrap ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
+              Pilih Tanggal Rencana:
+            </label>
+            <input 
+              type="date" 
+              value={tanggal}
+              onChange={(e) => setTanggal(e.target.value)}
+              className={`px-2 py-1 rounded-lg border text-xs font-semibold focus:ring-2 focus:ring-blue-500 focus:outline-none transition-shadow cursor-pointer ${isDark ? 'bg-slate-800 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-800'}`}
+            />
+          </div>
+
+          {!isToday && (
+            <button
+              onClick={() => setTanggal(new Date().toISOString().split('T')[0])}
+              className={`px-3 py-2 text-xs font-bold rounded-xl transition-colors ${isDark ? 'bg-blue-600 hover:bg-blue-700 text-white' : 'bg-blue-50 hover:bg-blue-100 text-blue-600 border border-blue-200'}`}
+              title="Kembali ke Hari Ini"
+            >
+              Hari Ini
+            </button>
+          )}
+        </div>
+      </div>
+
+      {loading ? (
+        <div className="flex flex-col items-center justify-center p-16 text-accent-blue">
+          <Loader size={36} className="animate-spin mb-4" />
+          <p className={`font-bold ${isDark ? 'text-gray-300' : 'text-navy-dark'}`}>Mengkalkulasi Prediksi Produksi...</p>
+        </div>
+      ) : (
+        <>
+          {/* KARTU ATAS: OEE PER MESIN */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="bg-navy-dark rounded-xl shadow-lg p-6 flex justify-between items-center relative overflow-hidden border border-white/10">
           <div className="absolute -right-6 -bottom-6 w-32 h-32 bg-green-500/10 rounded-full blur-2xl"></div>
           <div className="z-10 text-white flex flex-col gap-2">
@@ -801,6 +843,8 @@ const Efisiensi = () => {
           </table>
         </div>
       </div>
+        </>
+      )}
 
     </div>
   );

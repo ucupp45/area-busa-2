@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import axios from 'axios';
-import { Activity, Loader, Settings, BarChart2 } from 'lucide-react';
+import { Activity, Loader, Settings, BarChart2, Calendar } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line, ReferenceLine } from 'recharts';
 import { useSettings } from '../context/SettingsContext';
 
@@ -475,27 +475,45 @@ const PredictiveOeeRealisasi = () => {
     );
   };
 
+  const isToday = tanggal === new Date().toISOString().split('T')[0];
+
   return (
-    <div className={`p-6 min-h-screen ${isDark ? 'bg-slate-900 text-white' : 'bg-gray-50 text-gray-800'}`}>
-      <div className="mb-6 flex flex-col md:flex-row md:items-end justify-between gap-4">
+    <div className={`flex flex-col gap-6 animate-in fade-in duration-300 pb-10 ${isDark ? 'text-white' : 'text-gray-800'}`}>
+      <div className={`p-5 rounded-2xl border shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4 ${isDark ? 'bg-slate-800/80 border-slate-700' : 'bg-white border-gray-200'}`}>
         <div>
-          <h1 className={`text-3xl font-black flex items-center gap-3 ${isDark ? 'text-white' : 'text-navy-dark'}`}>
-            <Activity className="text-accent-blue" size={32} />
+          <h1 className={`text-2xl font-black flex items-center gap-2.5 ${isDark ? 'text-white' : 'text-navy-dark'}`}>
+            <Activity className="text-accent-blue" size={28} />
             Predictive OEE Realisasi
           </h1>
-          <p className={`text-sm mt-1 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-            Pengukuran & kalkulasi predictive OEE berbasis data aktual produksi yang diinput operator.
+          <p className={`text-xs mt-1 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+            Kalkulasi performa efektivitas mesin (Availability, Performance, Quality) berbasis data aktual produksi
           </p>
         </div>
 
-        <div className={`flex items-center gap-3 p-2.5 rounded-xl border shadow-sm ${isDark ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-200'}`}>
-          <label className={`text-sm font-bold whitespace-nowrap ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>Tanggal Analisis:</label>
-          <input 
-            type="date" 
-            value={tanggal}
-            onChange={(e) => setTanggal(e.target.value)}
-            className={`px-3 py-1.5 rounded-lg border text-sm font-semibold focus:ring-2 focus:ring-blue-500 focus:outline-none transition-shadow ${isDark ? 'bg-slate-700 border-gray-600 text-white' : 'bg-gray-50 border-gray-300 text-gray-800'}`}
-          />
+        {/* Filter Pemilih Tanggal Produksi */}
+        <div className="flex items-center gap-2.5">
+          <div className={`flex items-center gap-2 px-3 py-2 rounded-xl border shadow-sm ${isDark ? 'bg-slate-900 border-slate-700' : 'bg-gray-50 border-gray-200'}`}>
+            <Calendar size={16} className="text-blue-500 shrink-0" />
+            <label className={`text-xs font-bold whitespace-nowrap ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
+              Pilih Tanggal Produksi:
+            </label>
+            <input 
+              type="date" 
+              value={tanggal}
+              onChange={(e) => setTanggal(e.target.value)}
+              className={`px-2 py-1 rounded-lg border text-xs font-semibold focus:ring-2 focus:ring-blue-500 focus:outline-none transition-shadow cursor-pointer ${isDark ? 'bg-slate-800 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-800'}`}
+            />
+          </div>
+
+          {!isToday && (
+            <button
+              onClick={() => setTanggal(new Date().toISOString().split('T')[0])}
+              className={`px-3 py-2 text-xs font-bold rounded-xl transition-colors ${isDark ? 'bg-blue-600 hover:bg-blue-700 text-white' : 'bg-blue-50 hover:bg-blue-100 text-blue-600 border border-blue-200'}`}
+              title="Kembali ke Hari Ini"
+            >
+              Hari Ini
+            </button>
+          )}
         </div>
       </div>
 
