@@ -4,12 +4,12 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 export const translations = {
   id: {
     // Sidebar menu
-    dashboard:      'Dashboard',
+    dashboard:      'Dashboard Planning',
     insertSpk:      'Planning',
     realisasi:      'Realisasi',
     efisiensi:      'Predictive OEE',
     stok:           'Manajemen Stok',
-    database:       'Database Cycle Time',
+    database:       'Database',
     setting:        'Pengaturan',
     logOut:         'Log Out',
     // Header
@@ -47,12 +47,12 @@ export const translations = {
   },
   en: {
     // Sidebar menu
-    dashboard:      'Dashboard',
+    dashboard:      'Dashboard Planning',
     insertSpk:      'Planning',
     realisasi:      'Realization',
     efisiensi:      'Predictive OEE',
     stok:           'Stock Management',
-    database:       'Cycle Time Database',
+    database:       'Database',
     setting:        'Settings',
     logOut:         'Log Out',
     // Header

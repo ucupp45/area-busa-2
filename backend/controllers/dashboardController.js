@@ -228,7 +228,12 @@ exports.getDashboardData = async (req, res) => {
             anomalyCount: inefficientSpkCount
         };
 
-        res.json({ metrics, planningData, currentSpkName });
+        const [dateRows] = await db.query(
+            "SELECT DISTINCT DATE_FORMAT(tanggal_upload, '%Y-%m-%d') as tanggal FROM upload_history ORDER BY tanggal DESC"
+        );
+        const availableDates = dateRows.map(r => r.tanggal);
+
+        res.json({ metrics, planningData, currentSpkName, availableDates });
     } catch (err) {
         console.error('[ERROR] getDashboardData:', err);
         res.status(500).json({ message: 'Gagal memuat data dashboard planning' });

@@ -3,6 +3,7 @@ import { Database, Clock, GitMerge, Plus, Pencil, Trash2, X, Check, AlertTriangl
 import axios from 'axios';
 import { useParams } from 'react-router-dom';
 import royalCorpLogo from '../assets/royal-corp-logo.jpg';
+import { densityMatrixData } from '../utils/densityMatrix';
 
 const DatabaseCycle = () => {
   const [matriksVerticalData, setMatriksVerticalData] = useState([]);
@@ -178,20 +179,20 @@ const DatabaseCycle = () => {
   ];
 
   const matriksProductData = [
-    { base: 'BC 21', setara: [] },
-    { base: 'D 11', setara: ['D 12'] },
-    { base: 'D 14', setara: ['D 13'] },
-    { base: 'D 15', setara: ['RF GR', 'RF LI', 'RF YE'] },
-    { base: 'D 16', setara: [] },
-    { base: 'D 18', setara: ['BC 16', 'BC 18', 'D 19', 'FR 18', 'RH 3'] },
-    { base: 'D 20', setara: ['FR 20'] },
-    { base: 'D 22', setara: ['D 23', 'FR 22'] },
-    { base: 'D 24', setara: ['BC 25', 'D 25', 'D 26', 'FR 24', 'FR 25', 'HR 24', 'HR 26', 'RHL 25', 'RHL 26', 'RHL 28'] },
-    { base: 'D 32', setara: ['D 28', 'D 30', 'D 33', 'D 35', 'FR 30', 'HR 30', 'HR 35', 'RHL 32', 'RHL 35'] },
-    { base: 'D 55', setara: ['D 40', 'D 42', 'D 50', 'FR 40', 'FR 5 - 40', 'FR 8 - 50', 'FRH 40', 'GH 55', 'RHL 50', 'RHL 55'] },
-    { base: 'R 100', setara: ['R 70', 'R 90'] },
-    { base: 'R 50', setara: ['R 40', 'R 55'] },
+    { base: 'D 11', setara: ['D 12', 'D 13'] },
+    { base: 'D 14', setara: ['TF 2'] },
+    { base: 'D 15', setara: ['RF LI', 'TF 3', 'RF GREEN C'] },
+    { base: 'D 16', setara: ['RH 3', 'RH 9'] },
+    { base: 'D 18', setara: ['D 19', 'FR 18', 'BC 16', 'BC 18'] },
+    { base: 'D 20', setara: ['FR 20', 'TF 5'] },
+    { base: 'D 22', setara: ['D 23', 'FR 22', 'RH 5'] },
+    { base: 'D 24', setara: ['D 26', 'D 25', 'FR 24', 'HR 24', 'FR 25', 'RHL 25', 'RHL 26', 'RHL 28', 'BC 25', 'HR 26'] },
+    { base: 'D 32', setara: ['D 28', 'D 30', 'D 33', 'D 35', 'FR 30', 'RHL 32', 'HR 30', 'RHL 35', 'HR 35', 'HR 32'] },
+    { base: 'D 55', setara: ['D 40', 'D 50', 'FRH 40', 'FR 40', 'FR 5 - 40', 'D 42', 'FR 8 - 50', 'RHL 50', 'RHL 55', 'GH 55', 'VE 50-60'] },
     { base: 'RK 2', setara: [] },
+    { base: 'R 50', setara: ['R 40', 'R 55'] },
+    { base: 'R 100', setara: ['R 70', 'R 90'] },
+    { base: 'BC 21', setara: [] },
   ];
 
   const UPDATE_DATE = '14 JULI 2026';
@@ -665,10 +666,10 @@ const DatabaseCycle = () => {
                 <thead>
                   <tr className="bg-navy-dark text-white text-xs uppercase">
                     <th className="p-3 font-semibold border-r border-blue-800" rowSpan="2">Quality Busa</th>
-                    <th className="p-3 font-semibold text-center" colSpan="10">Produk Setara</th>
+                    <th className="p-3 font-semibold text-center" colSpan="11">Produk Setara</th>
                   </tr>
                   <tr className="bg-gray-100 text-gray-500 text-xs">
-                    {[...Array(10)].map((_, i) => (
+                    {[...Array(11)].map((_, i) => (
                       <th key={i} className="p-2 border border-gray-200 text-center font-bold">{i + 1}</th>
                     ))}
                   </tr>
@@ -677,7 +678,7 @@ const DatabaseCycle = () => {
                   {matriksProductData.map((row, idx) => (
                     <tr key={idx} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
                       <td className="p-3 border-r border-gray-100 font-bold text-navy-dark bg-gray-50">{row.base}</td>
-                      {[...Array(10)].map((_, i) => (
+                      {[...Array(11)].map((_, i) => (
                         <td key={i} className={`p-2 border border-gray-100 text-center text-xs font-semibold ${row.setara[i] ? 'text-gray-700' : 'bg-gray-800'}`}>
                           {row.setara[i] || ''}
                         </td>
@@ -693,14 +694,16 @@ const DatabaseCycle = () => {
         <>
 
           {/* Alert Banner */}
-          <div className="bg-blue-50 border border-blue-100 p-4 rounded-lg flex items-center gap-3 text-blue-800 shadow-sm">
-            <Database size={20} className="text-accent-blue shrink-0" />
-            <span className="text-sm font-semibold">
-              {activeMachine === 'packing' 
-                ? "Halaman ini Menampilkan referensi Total Cycle Time untuk area Packing."
-                : `Halaman ini Menampilkan referensi Total Cycle Time dan Operation Process Chart (OPC) untuk area Mesin ${activeMachine.charAt(0).toUpperCase() + activeMachine.slice(1)}.`}
-            </span>
-          </div>
+          {activeMachine !== 'density' && (
+            <div className="bg-blue-50 border border-blue-100 p-4 rounded-lg flex items-center gap-3 text-blue-800 shadow-sm">
+              <Database size={20} className="text-accent-blue shrink-0" />
+              <span className="text-sm font-semibold">
+                {activeMachine === 'packing' 
+                  ? "Halaman ini Menampilkan referensi Total Cycle Time untuk area Packing."
+                  : `Halaman ini Menampilkan referensi Total Cycle Time dan Operation Process Chart (OPC) untuk area Mesin ${activeMachine.charAt(0).toUpperCase() + activeMachine.slice(1)}.`}
+              </span>
+            </div>
+          )}
 
           {/* ========================================== */}
           {/* TABEL PENUH — CYCLE TIME VARIANS (DETIK)  */}
@@ -1609,6 +1612,38 @@ const DatabaseCycle = () => {
                   </button>
                 </div>
               )}
+            </div>
+          )}
+          {activeMachine === 'density' && (
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+              <div className="p-5 border-b border-gray-200 bg-gray-50/50 flex items-center justify-between">
+                <div>
+                  <h3 className="font-bold text-navy-dark text-lg uppercase">Matriks Density</h3>
+                  <p className="text-xs text-gray-500 mt-1">Konversi Quality Busa (Kode Asli) ke Nilai Angka Density (KG)</p>
+                </div>
+              </div>
+              <div className="overflow-x-auto p-4">
+                <table className="w-full text-left text-sm whitespace-nowrap">
+                  <thead>
+                    <tr className="bg-navy-dark text-white text-xs uppercase">
+                      <th className="p-3 font-semibold border-r border-blue-800 text-center">No</th>
+                      <th className="p-3 font-semibold border-r border-blue-800 text-center">Kode Asli (Kualitas)</th>
+                      <th className="p-3 font-semibold border-r border-blue-800 text-center">Mapping Grup</th>
+                      <th className="p-3 font-semibold text-center">Nilai Angka (Density)</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {densityMatrixData.map((row, idx) => (
+                      <tr key={idx} className="border-b border-gray-100 hover:bg-gray-50 transition-colors text-center">
+                        <td className="p-2 border-r border-gray-100 text-gray-500">{idx + 1}</td>
+                        <td className="p-2 border-r border-gray-100 font-bold text-navy-dark">{row.kode_asli}</td>
+                        <td className="p-2 border-r border-gray-100 font-medium text-gray-600 bg-gray-50">{row.mapping_grup}</td>
+                        <td className="p-2 font-bold text-accent-blue">{row.nilai_angka}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
         </>

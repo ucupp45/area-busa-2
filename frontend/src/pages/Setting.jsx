@@ -182,18 +182,18 @@ const Setting = () => {
         </SettingRow>
         <SettingRow label={t.akunAktif} description={t.akunDesc} darkMode={dm}>
           <div className="text-right">
-            <p className={`text-xs font-bold ${dm ? 'text-slate-200' : 'text-navy-dark'}`}>{user.name || '-'}</p>
+            <p className={`text-xs font-bold ${dm ? 'text-slate-200' : 'text-navy-dark'}`}>{user.username || user.name || '-'}</p>
             <p className={`text-[11px] ${dm ? 'text-slate-400' : 'text-gray-400'}`}>{user.role || '-'}</p>
           </div>
         </SettingRow>
         <SettingRow label={t.areaProd} description="" darkMode={dm}>
           <span className={`text-xs font-bold px-3 py-1 rounded-full ${dm ? 'bg-slate-700 text-slate-200' : 'bg-gray-100 text-gray-600'}`}>
-            Mesin Vertikal
+            Area Busa 2
           </span>
         </SettingRow>
         <SettingRow label={t.perusahaan} description="" darkMode={dm}>
           <span className={`text-xs font-bold px-3 py-1 rounded-full ${dm ? 'bg-slate-700 text-slate-200' : 'bg-gray-100 text-gray-600'}`}>
-            Royal Corp.
+            PT Royal Abadi Sejahtera
           </span>
         </SettingRow>
       </Section>

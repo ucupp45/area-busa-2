@@ -9,6 +9,9 @@ router.post('/preview', upload.single('spk_file'), spkController.previewSPK);
 // Route untuk refresh preview dengan data matriks terbaru
 router.post('/refresh-preview', spkController.refreshPreview);
 
+// Route untuk preview raw data (Pasted dari Excel)
+router.post('/preview-raw', spkController.previewRaw);
+
 // Route untuk kalkulasi single row (Manual SPK)
 router.post('/calculate-single', spkController.calculateSingleRow);
 

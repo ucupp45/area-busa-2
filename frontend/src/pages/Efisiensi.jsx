@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import axios from 'axios';
 import { Settings, Users, Activity, Loader, Layers, Edit2, Check, X, BarChart2, AlertTriangle, WrenchIcon, ShieldCheck, Clock } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line, ReferenceLine } from 'recharts';
 
 const Efisiensi = () => {
+  const [tanggal, setTanggal] = useState(new Date().toISOString().split('T')[0]);
   const [totalWaktu, setTotalWaktu] = useState(0);
   const [waktuPerMesinData, setWaktuPerMesinData] = useState({});
   const [manualOverrides, setManualOverrides] = useState({});
@@ -42,7 +43,7 @@ const Efisiensi = () => {
   const fetchData = async () => {
     try {
       const [efisiensiRes, chartRes, healthRes] = await Promise.all([
-        axios.get('http://localhost:5000/api/spk/efisiensi'),
+        axios.get(`http://localhost:5000/api/spk/efisiensi?date=${tanggal}`),
         axios.get('http://localhost:5000/api/spk/chart'),
         axios.get('http://localhost:5000/api/machines/health'),
       ]);
@@ -149,7 +150,7 @@ const Efisiensi = () => {
 
   useEffect(() => {
     fetchData();
-  }, []);
+  }, [tanggal]);
 
   // Helper untuk warna progress
   const getProgressColor = (value) => {
@@ -207,7 +208,7 @@ const Efisiensi = () => {
     }));
   };
 
-  const calculateMetrics = () => {
+  const { stats, oee, manpowerEff } = useMemo(() => {
     let totalWaktuAll = 0;
     let totalKapasitasMesin = 0;
     let totalKapasitasManpower = 0;
@@ -264,9 +265,7 @@ const Efisiensi = () => {
       oee: Math.min(oeeTotal, 100), 
       manpowerEff: Math.min(manpowerEfisiensi, 100) 
     };
-  };
-
-  const { stats, oee, manpowerEff } = calculateMetrics();
+  }, [waktuPerMesinData, manualOverrides]);
 
   useEffect(() => {
     const fetchOee = async () => {
@@ -274,17 +273,26 @@ const Efisiensi = () => {
       for (const key of ['Vertikal', 'Horizontal', 'Carousel']) {
         const data = waktuPerMesinData[key] || { waktu: 0, qty: 0 };
         const mData = stats[key];
+        const override = manualOverrides[key] || {};
+        
+        const shift_time = (override.waktu_shift !== undefined ? override.waktu_shift : 7) * 60; // to minutes
+        const efficiency = (override.eff !== undefined ? override.eff : 100) / 100;
+        const downtime = (override.downtime !== undefined ? override.downtime : 0) * 60; // to minutes
+        const machine_qty = override.mesin !== undefined ? override.mesin : (mData?.mesinReq || 1);
+        const cycle_time_per_machine = (override.ideal_cycle !== undefined ? override.ideal_cycle : 7) * 60; // to minutes
+        const defect_qty = override.defect !== undefined ? override.defect : 0;
+
         if (mData) {
           try {
             const res = await axios.post('http://localhost:5000/api/spk/calculate-oee', {
-              shift_time: 7, // Berdasarkan standar waktu/shift = 7 Jam
-              efficiency: 1.0,
-              downtime: 0, // Dalam Jam
-              machine_qty: mData.mesinReq,
-              cycle_time_per_machine: 420, // 7 Jam dalam Menit
-              operating_time: data.waktu,
+              shift_time,
+              efficiency,
+              downtime,
+              machine_qty,
+              cycle_time_per_machine,
+              operating_time: data.waktu, // Already in minutes
               total_input: data.qty || 1,
-              defect_qty: 0,
+              defect_qty,
               tanggal: new Date().toISOString().split('T')[0],
               tipe_mesin: key
             });
@@ -300,110 +308,218 @@ const Efisiensi = () => {
     if (Object.keys(stats).length > 0) {
       fetchOee();
     }
-  }, [waktuPerMesinData, manualOverrides]);
+  }, [waktuPerMesinData, manualOverrides, stats]);
 
   const renderMachineUtilization = () => {
     const keys = ['Vertikal', 'Horizontal', 'Carousel'];
 
+    // Pre-calculate data for all machines
+    const machineData = keys.reduce((acc, key) => {
+      const mData = stats[key];
+      const rawData = waktuPerMesinData[key] || { waktu: 0, qty: 0 };
+      const override = manualOverrides[key] || {};
+      
+      const waktu_shift = override.waktu_shift !== undefined ? override.waktu_shift : 7;
+      const eff = override.eff !== undefined ? override.eff : 100;
+      const downtime = override.downtime !== undefined ? override.downtime : 0;
+      const mesin = override.mesin !== undefined ? override.mesin : (mData?.mesinReq || 1);
+      const ideal_cycle = override.ideal_cycle !== undefined ? override.ideal_cycle : 7;
+      const defect = override.defect !== undefined ? override.defect : 0;
+      const qty = rawData.qty || 1;
+
+      const summary_available = Math.max(0, waktu_shift - downtime);
+      const available_pct = waktu_shift > 0 ? (summary_available * (eff / 100) / waktu_shift) * 100 : 0;
+
+      const ideal_cycle_time = mesin * ideal_cycle;
+      const operating_hours = rawData.waktu / 60;
+      const performance_pct = ideal_cycle_time > 0 ? (operating_hours / ideal_cycle_time) * 100 : 0;
+
+      const good_qty = Math.max(0, qty - defect);
+      const quality_pct = qty > 0 ? (good_qty / qty) * 100 : 0;
+
+      const oee_score = (Math.min(available_pct, 100) / 100) * (Math.min(performance_pct, 100) / 100) * (Math.min(quality_pct, 100) / 100) * 100;
+
+      acc[key] = {
+        waktu_shift, eff, downtime, summary_available, available_pct,
+        mesin, ideal_cycle, ideal_cycle_time, operating_hours, performance_pct,
+        qty, defect, quality_pct, oee_score,
+        uom: key === 'Vertikal' ? 'SB' : 'SH'
+      };
+      return acc;
+    }, {});
+
     return (
-      <div className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm mb-6">
-        <h3 className="font-bold text-navy-dark mb-4 flex items-center gap-2">
-          <Activity size={18} className="text-accent-blue" />
-          Utilisasi & Manpower Per Tipe Mesin
-        </h3>
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 mb-6 overflow-hidden">
+        <div className="p-4 border-b border-gray-100 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="bg-blue-50 p-2 rounded-lg">
+              <Activity size={18} className="text-blue-600" />
+            </div>
+            <h3 className="font-bold text-gray-800">Parameter Simulasi OEE</h3>
+          </div>
+          
+          {/* PEMILIH TANGGAL */}
+          <div className="flex items-center gap-2">
+            <label className="text-sm font-semibold text-gray-600">Tanggal:</label>
+            <input 
+              type="date" 
+              value={tanggal}
+              onChange={(e) => setTanggal(e.target.value)}
+              className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all shadow-sm"
+              max={new Date().toISOString().split('T')[0]}
+            />
+          </div>
+        </div>
         
-        <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-          {keys.map(key => {
-             const mData = stats[key];
-             if (!mData) return null;
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm text-left">
+            <thead>
+              <tr className="bg-gray-50/50">
+                <th className="p-4 font-semibold text-gray-500 uppercase text-[10px] tracking-wider w-1/4">Parameter</th>
+                {keys.map(key => (
+                  <th key={key} className="p-4 text-center font-bold text-gray-800 w-1/4 uppercase text-[11px] tracking-wider">
+                    {key}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-50">
+              
+              {/* AVAILABLE (A) */}
+              <tr>
+                <td colSpan={4} className="px-4 py-2 bg-emerald-50/50 border-l-[8px] border-emerald-500">
+                  <span className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider flex items-center gap-2">
+                    Available (A)
+                  </span>
+                </td>
+              </tr>
+              <tr className="hover:bg-gray-50/50 transition-colors">
+                <td className="p-3 pl-4 text-gray-600 font-medium border-l-[8px] border-emerald-500/30">Waktu / Shift (Jam)</td>
+                {keys.map(key => (
+                  <td key={key} className="p-2 text-center">
+                    <input type="number" className="w-16 text-center bg-gray-50 border-transparent focus:border-emerald-300 focus:bg-white focus:ring-2 focus:ring-emerald-100 rounded-lg px-2 py-1 outline-none font-semibold text-gray-700 transition-all" value={machineData[key].waktu_shift} onChange={(e) => handleManualOverride(key, 'waktu_shift', e.target.value)} />
+                  </td>
+                ))}
+              </tr>
+              <tr className="hover:bg-gray-50/50 transition-colors">
+                <td className="p-3 pl-4 text-gray-600 font-medium border-l-[8px] border-emerald-500/30">Eff (%)</td>
+                {keys.map(key => (
+                  <td key={key} className="p-2 text-center">
+                    <input type="number" className="w-16 text-center bg-gray-50 border-transparent focus:border-emerald-300 focus:bg-white focus:ring-2 focus:ring-emerald-100 rounded-lg px-2 py-1 outline-none font-semibold text-gray-700 transition-all" value={machineData[key].eff} onChange={(e) => handleManualOverride(key, 'eff', e.target.value)} />
+                  </td>
+                ))}
+              </tr>
+              <tr className="hover:bg-gray-50/50 transition-colors">
+                <td className="p-3 pl-4 text-red-500 font-medium border-l-[8px] border-emerald-500/30">Downtime (Jam)</td>
+                {keys.map(key => (
+                  <td key={key} className="p-2 text-center">
+                    <input type="number" className="w-16 text-center bg-red-50/50 text-red-600 border-transparent focus:border-red-300 focus:bg-white focus:ring-2 focus:ring-red-100 rounded-lg px-2 py-1 outline-none font-bold transition-all" value={machineData[key].downtime} onChange={(e) => handleManualOverride(key, 'downtime', e.target.value)} />
+                  </td>
+                ))}
+              </tr>
+              <tr className="hover:bg-gray-50/50 transition-colors">
+                <td className="p-3 pl-4 text-gray-500 font-medium text-xs border-l-[8px] border-emerald-500/30">Summary Available</td>
+                {keys.map(key => (
+                  <td key={key} className="p-3 text-center font-bold text-gray-700">
+                    {machineData[key].summary_available}
+                  </td>
+                ))}
+              </tr>
+              <tr>
+                <td className="p-3 pl-4 text-emerald-700 font-semibold text-xs border-l-[8px] border-emerald-500/30">Rate Available</td>
+                {keys.map(key => (
+                  <td key={key} className="p-3 text-center font-black text-emerald-600">
+                    {Math.min(machineData[key].available_pct, 100).toFixed(1)}%
+                  </td>
+                ))}
+              </tr>
 
-             const numMachines = parseInt(manualOverrides[key]?.mesin !== undefined ? manualOverrides[key].mesin : mData.mesinReq) || 0;
-             
-             // Hitung utilisasi per mesin
-             const machineUtilizations = [];
-             let remainingTime = mData.waktu;
-             const kapasitas = 480;
-             
-             if (numMachines > 0) {
-                 for (let i = 0; i < numMachines; i++) {
-                     let timeForThisMachine = Math.min(remainingTime, kapasitas);
-                     if (remainingTime <= 0) timeForThisMachine = 0;
-                     if (i === numMachines - 1 && remainingTime > kapasitas) {
-                         timeForThisMachine = remainingTime;
-                     }
-                     machineUtilizations.push((timeForThisMachine / kapasitas) * 100);
-                     remainingTime -= timeForThisMachine;
-                 }
-             } else {
-                 if (mData.waktu > 0) {
-                     machineUtilizations.push((mData.waktu / kapasitas) * 100);
-                 }
-             }
+              {/* PERFORMANCE (B) */}
+              <tr>
+                <td colSpan={4} className="px-4 py-2 bg-blue-50/50 border-l-[8px] border-blue-500 border-t border-blue-100/50 mt-2">
+                  <span className="text-[10px] font-bold text-blue-700 uppercase tracking-wider flex items-center gap-2">
+                    Performance (B)
+                  </span>
+                </td>
+              </tr>
+              <tr className="hover:bg-gray-50/50 transition-colors">
+                <td className="p-3 pl-4 text-gray-600 font-medium border-l-[8px] border-blue-500/30">Machine Qty</td>
+                {keys.map(key => (
+                  <td key={key} className="p-2 text-center">
+                    <input type="number" className="w-16 text-center bg-blue-50/50 text-blue-700 border-transparent focus:border-blue-300 focus:bg-white focus:ring-2 focus:ring-blue-100 rounded-lg px-2 py-1 outline-none font-bold transition-all" value={machineData[key].mesin} onChange={(e) => handleManualOverride(key, 'mesin', e.target.value)} />
+                  </td>
+                ))}
+              </tr>
+              <tr className="hover:bg-gray-50/50 transition-colors">
+                <td className="p-3 pl-4 text-gray-600 font-medium border-l-[8px] border-blue-500/30">Ideal Cycle</td>
+                {keys.map(key => (
+                  <td key={key} className="p-2 text-center">
+                    <input type="number" className="w-16 text-center bg-gray-50 border-transparent focus:border-blue-300 focus:bg-white focus:ring-2 focus:ring-blue-100 rounded-lg px-2 py-1 outline-none font-semibold text-gray-700 transition-all" value={machineData[key].ideal_cycle} onChange={(e) => handleManualOverride(key, 'ideal_cycle', e.target.value)} />
+                  </td>
+                ))}
+              </tr>
+              <tr className="hover:bg-gray-50/50 transition-colors">
+                <td className="p-3 pl-4 text-gray-500 font-medium text-xs border-l-[8px] border-blue-500/30">Ideal Time</td>
+                {keys.map(key => (
+                  <td key={key} className="p-3 text-center font-bold text-gray-700">
+                    {machineData[key].ideal_cycle_time}
+                  </td>
+                ))}
+              </tr>
+              <tr className="hover:bg-gray-50/50 transition-colors">
+                <td className="p-3 pl-4 text-gray-500 font-medium text-xs border-l-[8px] border-blue-500/30">Operating (Jam)</td>
+                {keys.map(key => (
+                  <td key={key} className="p-3 text-center font-bold text-gray-700">
+                    {machineData[key].operating_hours.toFixed(2)}
+                  </td>
+                ))}
+              </tr>
+              <tr>
+                <td className="p-3 pl-4 text-blue-700 font-semibold text-xs border-l-[8px] border-blue-500/30">Rate Performance</td>
+                {keys.map(key => (
+                  <td key={key} className={`p-3 text-center font-black ${machineData[key].performance_pct > 100 ? 'text-red-600' : 'text-blue-600'}`}>
+                    {machineData[key].performance_pct.toFixed(1)}%
+                  </td>
+                ))}
+              </tr>
 
-             return (
-               <div key={key} className="border border-gray-200 p-4 rounded-lg bg-gray-50 flex flex-col gap-2">
-                  <div className="font-bold text-navy-dark border-b pb-2 mb-2">{key}</div>
-                  
-                  <div className="flex justify-between text-xs">
-                    <span className="text-gray-500">Total Waktu:</span>
-                    <span className="font-bold">{mData.waktu.toFixed(1)} mnt</span>
-                  </div>
-                  
-                  <div className="flex justify-between text-xs items-center">
-                    <span className="text-gray-500">Mesin:</span>
-                    <input 
-                       type="number"
-                       className="w-12 px-1 py-0.5 border border-gray-300 rounded text-right font-bold text-blue-600 focus:outline-none focus:border-accent-blue focus:ring-1 focus:ring-accent-blue"
-                       value={manualOverrides[key]?.mesin !== undefined ? manualOverrides[key].mesin : mData.mesinReq}
-                       onChange={(e) => handleManualOverride(key, 'mesin', e.target.value)}
-                       min="0"
-                    />
-                  </div>
-
-                  <div className="flex justify-between text-xs items-center">
-                    <span className="text-gray-500">Manpower:</span>
-                    <input 
-                       type="number"
-                       className="w-12 px-1 py-0.5 border border-gray-300 rounded text-right font-bold text-purple-600 focus:outline-none focus:border-accent-blue focus:ring-1 focus:ring-accent-blue"
-                       value={manualOverrides[key]?.manpower !== undefined ? manualOverrides[key].manpower : mData.mpReq}
-                       onChange={(e) => handleManualOverride(key, 'manpower', e.target.value)}
-                       min="0"
-                    />
-                  </div>
-
-                  <div className="mt-2 pt-2 border-t border-gray-200">
-                     <div className="flex justify-between text-[10px] mb-1">
-                       <span className="text-gray-500 font-semibold">Total Utilisasi</span>
-                       <span className={`font-bold px-1.5 py-0.5 rounded ${mData.utilisasi > 100 ? 'bg-red-100 text-red-700' : mData.utilisasi >= 80 ? 'bg-green-100 text-green-700' : mData.utilisasi >= 50 ? 'bg-yellow-100 text-yellow-700' : 'bg-gray-100 text-gray-600'}`}>{mData.utilisasi.toFixed(1)}%</span>
-                     </div>
-                     
-                     <div className="flex flex-col gap-1.5 mt-2">
-                        {machineUtilizations.length > 0 ? machineUtilizations.map((util, i) => (
-                           <div key={i} className="flex items-center gap-2">
-                             <span className="text-[9px] text-gray-400 w-8">M{i+1}</span>
-                             <div className="w-full bg-gray-200 rounded-full h-1.5 flex-1 relative group">
-                               <div 
-                                 className={`h-1.5 rounded-full ${util > 100 ? 'bg-red-500' : util >= 80 ? 'bg-green-500' : util >= 50 ? 'bg-yellow-500' : 'bg-gray-400'}`} 
-                                 style={{ width: `${Math.min(util, 100)}%` }}
-                               ></div>
-                             </div>
-                             <span className="text-[9px] font-medium text-gray-500 w-6 text-right">{util.toFixed(0)}%</span>
-                           </div>
-                        )) : (
-                            <div className="w-full bg-gray-200 rounded-full h-1.5 mt-1"></div>
-                        )}
-                     </div>
-
-                     {mData.utilisasi > 100 && (
-                      <div className="mt-3 p-2 bg-red-50 border border-red-100 rounded text-[10px] text-red-600 flex items-start gap-1.5 leading-tight">
-                        <AlertTriangle size={12} className="shrink-0 mt-0.5" />
-                        <span>Overcapacity! Tambah mesin/manpower di atas.</span>
-                      </div>
-                    )}
-                  </div>
-               </div>
-             );
-          })}
+              {/* QUALITY (C) */}
+              <tr>
+                <td colSpan={4} className="px-4 py-2 bg-purple-50/50 border-l-[8px] border-purple-500 border-t border-purple-100/50 mt-2">
+                  <span className="text-[10px] font-bold text-purple-700 uppercase tracking-wider flex items-center gap-2">
+                    Quality (C)
+                  </span>
+                </td>
+              </tr>
+              <tr className="hover:bg-gray-50/50 transition-colors">
+                <td className="p-3 pl-4 text-gray-500 font-medium text-xs border-l-[8px] border-purple-500/30">Total Output</td>
+                {keys.map(key => (
+                  <td key={key} className="p-3 text-center font-bold text-gray-700">
+                    {machineData[key].qty.toFixed(1)} <span className="text-[9px] text-gray-400 font-normal">{machineData[key].uom}</span>
+                  </td>
+                ))}
+              </tr>
+              <tr className="hover:bg-gray-50/50 transition-colors">
+                <td className="p-3 pl-4 text-red-500 font-medium border-l-[8px] border-purple-500/30">Defect</td>
+                {keys.map(key => (
+                  <td key={key} className="p-2 text-center">
+                    <div className="flex items-center justify-center gap-1.5">
+                      <input type="number" className="w-16 text-center bg-red-50/50 text-red-600 border-transparent focus:border-red-300 focus:bg-white focus:ring-2 focus:ring-red-100 rounded-lg px-2 py-1 outline-none font-bold transition-all" value={machineData[key].defect} onChange={(e) => handleManualOverride(key, 'defect', e.target.value)} />
+                      <span className="text-[9px] text-gray-400">{machineData[key].uom}</span>
+                    </div>
+                  </td>
+                ))}
+              </tr>
+              <tr>
+                <td className="p-3 pl-4 text-purple-700 font-semibold text-xs border-l-[8px] border-purple-500/30">Rate Quality</td>
+                {keys.map(key => (
+                  <td key={key} className="p-3 text-center font-black text-purple-600">
+                    {Math.min(machineData[key].quality_pct, 100).toFixed(1)}%
+                  </td>
+                ))}
+              </tr>
+            </tbody>
+          </table>
         </div>
       </div>
     );
@@ -420,25 +536,6 @@ const Efisiensi = () => {
 
   return (
     <div className="flex flex-col gap-8 animate-in fade-in duration-300 pb-10">
-      
-      {/* PANEL SIMULASI OEE */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 mb-2 flex items-center justify-between">
-         <div className="flex items-center gap-2 text-navy-dark font-bold">
-            <Settings size={18} className="text-gray-400" />
-            Parameter OEE
-         </div>
-         <div className="flex gap-4">
-            <div className="flex items-center gap-2">
-               <label className="text-xs font-semibold text-gray-500">Downtime (Jam):</label>
-               <input type="number" value={0} disabled className="bg-gray-100 border border-gray-200 rounded px-3 py-1.5 text-sm w-20 text-center cursor-not-allowed text-gray-500" title="Dinonaktifkan sementara" />
-            </div>
-            <div className="flex items-center gap-2">
-               <label className="text-xs font-semibold text-gray-500">Defect Qty:</label>
-               <input type="number" value={0} disabled className="bg-gray-100 border border-gray-200 rounded px-3 py-1.5 text-sm w-20 text-center cursor-not-allowed text-gray-500" title="Dinonaktifkan sementara" />
-            </div>
-         </div>
-      </div>
-
       {/* KARTU ATAS: OEE PER MESIN */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="bg-navy-dark rounded-xl shadow-lg p-6 flex justify-between items-center relative overflow-hidden border border-white/10">

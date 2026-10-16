@@ -39,6 +39,10 @@ const InsertSPK = () => {
   const [editPrediksiSbValue, setEditPrediksiSbValue] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   
+  // State untuk Paste dari Excel
+  const [isPasteModalOpen, setIsPasteModalOpen] = useState(false);
+  const [pasteText, setPasteText] = useState('');
+
   // State untuk sorting tabel preview
   const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc' });
 
@@ -106,6 +110,21 @@ const InsertSPK = () => {
   const closeModal = () => {
     setModalConfig({ ...modalConfig, isOpen: false });
   };
+
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (modalConfig.isOpen && e.key === 'Enter') {
+        e.preventDefault();
+        if (modalConfig.onConfirm) {
+          modalConfig.onConfirm();
+        }
+        closeModal();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [modalConfig]);
 
   const fileInputRef = useRef(null);
 
@@ -546,6 +565,63 @@ const InsertSPK = () => {
     });
   };
 
+  const handleProcessPaste = async () => {
+    if (!pasteText.trim()) return;
+    try {
+      setIsRefreshing(true);
+      const rows = pasteText.trim().split('\n');
+      const newRows = rows.map(r => {
+        const cols = r.split('\t').map(c => c.trim());
+        const t = parseFloat(cols[5]) || 0;
+        const qty = parseFloat(cols[6]) || 0;
+        const p = parseFloat(cols[3]) || 0;
+        const l = parseFloat(cols[4]) || 0;
+        return {
+          noWo: cols[0] || '-',
+          item: cols[1] || '',
+          customer: cols[2] || '-',
+          ukuranP: p,
+          ukuranL: l,
+          ukuranT: t,
+          bahanBakuP: p,
+          bahanBakuL: l,
+          bahanBakuT: t,
+          qty: qty,
+          qtyBB: qty,
+          qtyCut: qty,
+          match: false,
+          ct: 0,
+          mesinTujuan: '-',
+          waktu: 0,
+          prediksi_sb: null
+        };
+      });
+
+      // Kirim newRows ke backend untuk di-grouping (seperti upload Excel)
+      const response = await axios.post('http://localhost:5000/api/spk/preview-raw', { rawRows: newRows });
+      
+      if (response.data && response.data.parsedData) {
+        const groupedNewRows = response.data.parsedData;
+        const updatedData = [...parsedData, ...groupedNewRows];
+        
+        const sortedData = updatedData.sort((a, b) => {
+          if (a.match === b.match) return 0;
+          return a.match ? -1 : 1;
+        });
+        setParsedData(sortedData);
+        recalculateSummary(sortedData);
+      }
+      setIsPasteModalOpen(false);
+      setPasteText('');
+      showModal("Sukses", "Data berhasil di-paste dan dikalkulasi!", "info");
+    } catch (err) {
+      console.error("Gagal paste:", err);
+      showModal("Error", "Gagal memproses data paste.", "error");
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
   const handleSaveNewRow = () => {
     if (!newRowData.item || !newRowData.qty) {
       showModal("Peringatan", "Nama Item dan Qty harus diisi!", "warning");
@@ -858,33 +934,69 @@ const InsertSPK = () => {
 
       {/* AREA UPLOAD & SUMMARY KALKULASI */}
       {!fileUploaded ? (
-        <div
-          className="bg-white p-8 rounded-xl border-2 border-dashed border-accent-blue shadow-sm flex flex-col items-center justify-center text-center h-64 bg-blue-50/20 transition-all hover:bg-blue-50/40 cursor-pointer relative"
-          onClick={handleAreaClick}
-        >
-          {loading ? (
-            <div className="flex flex-col items-center text-accent-blue">
-              <Loader size={36} className="animate-spin mb-4" />
-              <h3 className="text-lg font-bold text-navy-dark">Memproses SPK...</h3>
-              <p className="text-sm text-gray-500">Sistem sedang mencocokkan data ke database cycle time</p>
-            </div>
-          ) : (
-            <>
-              <div className="w-16 h-16 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center mb-4">
-                <UploadCloud size={32} />
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* Opsi 1: Upload SPK */}
+          <div
+            className="bg-white p-8 rounded-xl border-2 border-dashed border-accent-blue shadow-sm flex flex-col items-center justify-center text-center h-64 bg-blue-50/20 transition-all hover:bg-blue-50/40 cursor-pointer relative"
+            onClick={handleAreaClick}
+          >
+            {loading ? (
+              <div className="flex flex-col items-center text-accent-blue">
+                <Loader size={36} className="animate-spin mb-4" />
+                <h3 className="text-lg font-bold text-navy-dark">Memproses SPK...</h3>
+                <p className="text-sm text-gray-500">Sistem sedang mencocokkan data ke database cycle time</p>
               </div>
-              <h3 className="text-lg font-bold text-navy-dark mb-1">Upload Surat Perintah Kerja (SPK)</h3>
-              <p className="text-sm text-gray-500 mb-4">
-                Pilih atau Drag & Drop file
-                <span className="font-bold text-green-600"> PDF (.pdf)</span> atau
-                <span className="font-bold text-blue-600"> Excel (.xlsx)</span>
-              </p>
-              <button className="bg-accent-blue text-navy-dark px-6 py-2 rounded-lg font-bold text-sm shadow-sm hover:bg-blue-300 transition-colors">
-                Pilih File SPK
-              </button>
-              {errorMsg && <p className="mt-4 text-red-500 text-sm font-semibold">{errorMsg}</p>}
-            </>
-          )}
+            ) : (
+              <>
+                <div className="w-16 h-16 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center mb-4">
+                  <UploadCloud size={32} />
+                </div>
+                <h3 className="text-lg font-bold text-navy-dark mb-1">Upload Surat Perintah Kerja (SPK)</h3>
+                <p className="text-sm text-gray-500 mb-4">
+                  Pilih atau Drag & Drop file
+                  <span className="font-bold text-green-600"> PDF (.pdf)</span> atau
+                  <span className="font-bold text-blue-600"> Excel (.xlsx)</span>
+                </p>
+                <button className="bg-accent-blue text-navy-dark px-6 py-2 rounded-lg font-bold text-sm shadow-sm hover:bg-blue-300 transition-colors">
+                  Pilih File SPK
+                </button>
+                {errorMsg && <p className="mt-4 text-red-500 text-sm font-semibold">{errorMsg}</p>}
+              </>
+            )}
+          </div>
+
+          {/* Opsi 2: Input Manual / Copas Tabel Polosan */}
+          <div
+            className="bg-white p-8 rounded-xl border-2 border-dashed border-purple-400 shadow-sm flex flex-col items-center justify-center text-center h-64 bg-purple-50/10 transition-all hover:bg-purple-50/30 cursor-pointer relative"
+            onClick={(e) => {
+              e.stopPropagation();
+              setFileUploaded(true);
+              setCombinedSpkName(`SPK_Manual_${new Date().toISOString().slice(0,10)}`);
+              setParsedData([]);
+              setSpkSummary({
+                totalWaktu: 0,
+                mesin: 0,
+                manpower: 0,
+                existingWaktu: 0,
+                summaryPerMesin: { 
+                  Vertikal: { totalWaktu: 0, totalQty: 0, mesinDibutuhkan: 0, manpowerDibutuhkan: 0 }, 
+                  Horizontal: { totalWaktu: 0, totalQty: 0, mesinDibutuhkan: 0, manpowerDibutuhkan: 0 }, 
+                  Carousel: { totalWaktu: 0, totalQty: 0, mesinDibutuhkan: 0, manpowerDibutuhkan: 0 } 
+                }
+              });
+            }}
+          >
+            <div className="w-16 h-16 bg-purple-100 text-purple-600 rounded-full flex items-center justify-center mb-4">
+              <FileText size={32} />
+            </div>
+            <h3 className="text-lg font-bold text-navy-dark mb-1">Buat SPK Manual (Tabel Polosan)</h3>
+            <p className="text-sm text-gray-500 mb-4">
+              Buka tabel kosong untuk <span className="font-bold text-purple-600">Copas data dari Excel</span> atau input satu per satu.
+            </p>
+            <button className="bg-purple-500 text-white px-6 py-2 rounded-lg font-bold text-sm shadow-sm hover:bg-purple-600 transition-colors">
+              Mulai Input Manual
+            </button>
+          </div>
         </div>
       ) : (
         <>
@@ -1048,6 +1160,9 @@ const InsertSPK = () => {
                 </button>
                 <button onClick={() => setIsAddingRow(true)} className="flex items-center gap-2 bg-purple-100 text-purple-700 px-5 py-2 rounded-lg font-bold text-sm hover:bg-purple-200 transition-colors shadow-sm">
                   <span className="text-lg leading-none">+</span> Tambah Manual
+                </button>
+                <button onClick={() => setIsPasteModalOpen(true)} className="flex items-center gap-2 bg-green-100 text-green-700 px-5 py-2 rounded-lg font-bold text-sm hover:bg-green-200 transition-colors shadow-sm">
+                  <FileText size={16} /> Copas dari Excel
                 </button>
                 <button
                   onClick={async () => {
@@ -1422,6 +1537,45 @@ const InsertSPK = () => {
               </button>
               <button onClick={handleSaveNewRow} className="px-6 py-2 rounded-lg font-bold text-sm text-white bg-green-600 hover:bg-green-700 transition-colors shadow-sm flex items-center gap-2">
                 <Check size={16} /> Simpan Data
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL PASTE EXCEL */}
+      {isPasteModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl overflow-hidden flex flex-col">
+            <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50 flex justify-between items-center">
+              <h2 className="text-lg font-bold text-navy-dark flex items-center gap-2">
+                <FileText className="text-green-500" /> Copas Data dari Excel
+              </h2>
+              <button onClick={() => setIsPasteModalOpen(false)} className="text-gray-400 hover:text-red-500 transition-colors">
+                <X size={20} />
+              </button>
+            </div>
+            
+            <div className="p-6">
+              <p className="text-sm text-gray-500 mb-4">
+                Paste (Ctrl+V) data baris dari Excel ke dalam kotak di bawah ini. Pastikan urutan kolom sesuai standar: <br/>
+                <strong>No WO | Item (Description) | Customer | P | L | T | Qty</strong>
+              </p>
+              <textarea
+                value={pasteText}
+                onChange={(e) => setPasteText(e.target.value)}
+                placeholder="Paste data TSV Excel di sini..."
+                className="w-full h-48 border border-gray-300 rounded-lg p-3 text-sm focus:border-green-500 focus:ring-1 focus:ring-green-500 outline-none"
+              ></textarea>
+            </div>
+
+            <div className="p-4 border-t border-gray-200 bg-gray-50 flex justify-end gap-3">
+              <button onClick={() => setIsPasteModalOpen(false)} className="px-6 py-2 rounded-lg font-bold text-sm text-gray-500 bg-white border border-gray-300 hover:bg-gray-100 transition-colors">
+                Batal
+              </button>
+              <button onClick={handleProcessPaste} disabled={isRefreshing || !pasteText.trim()} className="px-6 py-2 rounded-lg font-bold text-sm text-white bg-green-600 hover:bg-green-700 transition-colors shadow-sm flex items-center gap-2 disabled:opacity-50">
+                {isRefreshing ? <Loader size={16} className="animate-spin" /> : <Check size={16} />} 
+                Proses Data Paste
               </button>
             </div>
           </div>

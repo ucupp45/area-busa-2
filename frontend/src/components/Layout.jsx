@@ -1,6 +1,6 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useState, useEffect } from 'react';
-import { LayoutDashboard, FilePlus, Activity, Package, Database, Settings, LogOut, TrendingUp, ClipboardCheck } from 'lucide-react';
+import { LayoutDashboard, FilePlus, Activity, Package, Database, Settings, LogOut, TrendingUp, ClipboardCheck, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useSettings } from '../context/SettingsContext';
 
 const Layout = ({ children }) => {
@@ -32,20 +32,20 @@ const Layout = ({ children }) => {
   };
 
   // State untuk melacak submenu yang terbuka
-  const [openMenu, setOpenMenu] = useState('');
+  const [openMenus, setOpenMenus] = useState([]);
+  
+  // State untuk sidebar collapse
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
   // Menu navigasi dengan label dari terjemahan
   const menuItems = [
-    { 
-      path: '/',
-      name: t.dashboard,  
-      icon: LayoutDashboard
-    },
+    { path: '/planning-vs-realisasi', name: 'Dashboard Planning vs Realisasi', icon: TrendingUp },
     {
       id: 'planning',
       name: t.insertSpk,   
       icon: FilePlus,
       subItems: [
+        { path: '/dashboard-planning', name: t.dashboard, icon: LayoutDashboard },
         ...((user.role === 'PPC' || user.role === 'Superadmin') ? [{ path: '/insert-spk', name: 'Insert Planning', icon: FilePlus }] : []),
         { path: '/efisiensi', name: t.efisiensi, icon: Activity }
       ]
@@ -55,11 +55,13 @@ const Layout = ({ children }) => {
       name: t.realisasi || 'Realisasi', 
       icon: ClipboardCheck,
       subItems: [
+        { path: '/dashboard-realisasi', name: 'Dashboard Realisasi', icon: LayoutDashboard },
         { path: '/realisasi/input', name: 'Input Realisasi', icon: ClipboardCheck },
-        { path: '/realisasi/hasil', name: 'Hasil Realisasi', icon: ClipboardCheck }
+        { path: '/realisasi/hasil', name: 'Hasil Realisasi', icon: ClipboardCheck },
+        { path: '/realisasi/predictive-oee', name: t.efisiensi, icon: Activity }
       ]
     },
-    // { path: '/stok',       name: t.stok,       icon: Package },
+    { path: '/realisasi/stok-sisa-potong', name: 'Stok Sisa Potong', icon: Package },
     { 
       id: 'database',
       name: t.database,   
@@ -69,11 +71,20 @@ const Layout = ({ children }) => {
         { path: '/database/horizontal', name: 'Mesin Horizontal', icon: Database },
         { path: '/database/carousel', name: 'Mesin Carousel', icon: Database },
         { path: '/database/matriks', name: 'Matriks Ketinggian', icon: Database },
+        { path: '/database/density', name: 'Matriks Density', icon: Database },
         { path: '/database/mesin-manpower', name: 'Mesin & Orang', icon: Database },
         { path: '/database/packing', name: 'Matriks Packing', icon: Database }
       ]
-    },
+    }
   ];
+
+  useEffect(() => {
+    // Otomatis buka menu yang sesuai dengan rute saat ini jika belum terbuka
+    const activeItem = menuItems.find(item => item.subItems && item.subItems.some(sub => location.pathname === sub.path));
+    if (activeItem && !openMenus.includes(activeItem.id)) {
+      setOpenMenus(prev => [...prev, activeItem.id]);
+    }
+  }, [location.pathname, openMenus]);
 
   const getPageTitle = () => {
     if (location.pathname === '/setting') return t.setting;
@@ -81,7 +92,10 @@ const Layout = ({ children }) => {
       if (m.path === location.pathname) return m.name;
       if (m.subItems) {
         const sub = m.subItems.find(s => s.path === location.pathname);
-        if (sub) return `${m.name} - ${sub.name}`;
+        if (sub) {
+          if (sub.path === '/dashboard-planning') return sub.name;
+          return `${m.name} - ${sub.name}`;
+        }
       }
     }
     return t.dashboard;
@@ -99,36 +113,58 @@ const Layout = ({ children }) => {
     <div className={`flex h-screen font-sans transition-colors duration-300 ${bgMain}`}>
 
       {/* SIDEBAR */}
-      <aside className={`w-64 ${bgSidebar} text-white flex flex-col justify-between shadow-xl z-20 transition-colors duration-300 print:hidden`}>
-        <div>
-          <div className="h-16 flex items-center justify-center border-b border-white/10">
-            <h1 className="text-xl font-bold tracking-wider text-accent-blue">AREA BUSA 2</h1>
+      <aside className={`relative transition-all duration-300 ease-in-out ${isSidebarCollapsed ? 'w-20' : 'w-64'} ${bgSidebar} text-white flex flex-col shadow-xl z-30 print:hidden`}>
+        
+        {/* Toggle Button Absolute */}
+        <button 
+          onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)} 
+          className={`absolute -right-4 top-1/2 -translate-y-1/2 z-40 bg-accent-blue text-navy-dark p-1 rounded-full shadow-lg hover:scale-110 transition-transform flex items-center justify-center border-[3px] ${prefs.darkMode ? 'border-[#0f172a]' : 'border-gray-50'}`}
+          title={isSidebarCollapsed ? "Perlebar Sidebar" : "Perkecil Sidebar"}
+        >
+          {isSidebarCollapsed ? <ChevronRight size={18} strokeWidth={3} /> : <ChevronLeft size={18} strokeWidth={3} />}
+        </button>
+
+        <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+          <div className={`h-16 flex-shrink-0 flex items-center ${isSidebarCollapsed ? 'justify-center' : 'justify-start'} border-b border-white/10 px-4`}>
+            {!isSidebarCollapsed ? (
+              <h1 className="text-xl font-bold tracking-wider text-accent-blue whitespace-nowrap overflow-hidden">AREA BUSA 2</h1>
+            ) : (
+              <h1 className="text-lg font-bold tracking-wider text-accent-blue whitespace-nowrap overflow-hidden">AB2</h1>
+            )}
           </div>
-          <nav className="mt-6 px-4">
+          <nav className="flex-1 overflow-y-auto mt-6 px-3 pb-4 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:bg-white/20 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-white/30">
             {menuItems.map((item) => {
               const Icon = item.icon;
               
               if (item.subItems) {
                 const isSubActive = item.subItems.some(sub => location.pathname === sub.path);
-                const isOpen = openMenu === item.id || isSubActive;
+                const isOpen = openMenus.includes(item.id);
                 return (
                   <div key={item.id} className="mb-2">
                     <button
-                      onClick={() => setOpenMenu(isOpen && !isSubActive ? '' : item.id)}
-                      className={`w-full flex items-center justify-between px-4 py-3 rounded-lg transition-all duration-200 ${
+                      onClick={() => {
+                        if (isSidebarCollapsed) setIsSidebarCollapsed(false);
+                        setOpenMenus(prev => 
+                          prev.includes(item.id) 
+                            ? prev.filter(id => id !== item.id) 
+                            : [...prev, item.id]
+                        );
+                      }}
+                      className={`w-full flex items-center ${isSidebarCollapsed ? 'justify-center px-0' : 'justify-between px-3'} py-3 rounded-lg transition-all duration-200 ${
                         isSubActive
                           ? 'bg-accent-blue/10 text-accent-blue font-bold'
                           : 'hover:bg-white/10 text-gray-300 hover:text-white'
                       }`}
+                      title={isSidebarCollapsed ? item.name : ''}
                     >
-                      <div className="flex items-center gap-3">
-                        <Icon size={20} strokeWidth={isSubActive ? 2.5 : 2} />
-                        <span className="text-sm">{item.name}</span>
+                      <div className="flex items-center justify-center gap-3">
+                        <Icon size={20} strokeWidth={isSubActive ? 2.5 : 2} className="flex-shrink-0" />
+                        {!isSidebarCollapsed && <span className="text-sm whitespace-nowrap overflow-hidden text-ellipsis">{item.name}</span>}
                       </div>
-                      <span className="text-xs">{isOpen ? '▼' : '▶'}</span>
+                      {!isSidebarCollapsed && <span className="text-xs">{isOpen ? '▼' : '▶'}</span>}
                     </button>
                     
-                    {isOpen && (
+                    {isOpen && !isSidebarCollapsed && (
                       <div className="mt-1 ml-4 pl-4 border-l border-white/20 flex flex-col gap-1">
                         {item.subItems.map((sub) => {
                           const SubIcon = sub.icon;
@@ -143,8 +179,8 @@ const Layout = ({ children }) => {
                                   : 'hover:bg-white/10 text-gray-400 hover:text-white'
                               }`}
                             >
-                              <SubIcon size={16} strokeWidth={isActive ? 2.5 : 2} />
-                              <span className="text-sm">{sub.name}</span>
+                              <SubIcon size={16} strokeWidth={isActive ? 2.5 : 2} className="flex-shrink-0" />
+                              <span className="text-sm whitespace-nowrap overflow-hidden text-ellipsis">{sub.name}</span>
                             </Link>
                           );
                         })}
@@ -159,14 +195,15 @@ const Layout = ({ children }) => {
                 <Link
                   key={item.path}
                   to={item.path}
-                  className={`flex items-center gap-3 px-4 py-3 mb-2 rounded-lg transition-all duration-200 ${
+                  className={`flex items-center ${isSidebarCollapsed ? 'justify-center px-0' : 'px-3'} gap-3 py-3 mb-2 rounded-lg transition-all duration-200 ${
                     isActive
                       ? 'bg-accent-blue text-navy-dark font-bold shadow-md'
                       : 'hover:bg-white/10 text-gray-300 hover:text-white'
                   }`}
+                  title={isSidebarCollapsed ? item.name : ''}
                 >
-                  <Icon size={20} strokeWidth={isActive ? 2.5 : 2} />
-                  <span className="text-sm">{item.name}</span>
+                  <Icon size={20} strokeWidth={isActive ? 2.5 : 2} className="flex-shrink-0" />
+                  {!isSidebarCollapsed && <span className="text-sm whitespace-nowrap overflow-hidden text-ellipsis">{item.name}</span>}
                 </Link>
               );
             })}
@@ -174,24 +211,26 @@ const Layout = ({ children }) => {
         </div>
 
         {/* Sidebar Bottom */}
-        <div className="px-4 py-6 border-t border-white/10">
+        <div className="flex-shrink-0 px-3 py-6 border-t border-white/10 flex flex-col gap-1">
           <Link
             to="/setting"
-            className={`flex items-center gap-3 px-4 py-2 w-full rounded-lg transition-colors mb-1 ${
+            className={`flex items-center ${isSidebarCollapsed ? 'justify-center px-0' : 'px-3'} gap-3 py-2 w-full rounded-lg transition-colors ${
               location.pathname === '/setting'
                 ? 'bg-accent-blue text-navy-dark font-bold shadow-md'
                 : 'text-gray-300 hover:bg-white/10 hover:text-white'
             }`}
+            title={isSidebarCollapsed ? t.setting : ''}
           >
             <Settings size={20} />
-            <span className="text-sm">{t.setting}</span>
+            {!isSidebarCollapsed && <span className="text-sm whitespace-nowrap">{t.setting}</span>}
           </Link>
           <button
             onClick={handleLogout}
-            className="flex items-center gap-3 px-4 py-2 w-full text-red-400 hover:bg-red-500/10 hover:text-red-300 rounded-lg transition-colors"
+            className={`flex items-center ${isSidebarCollapsed ? 'justify-center px-0' : 'px-3'} gap-3 py-2 w-full text-red-400 hover:bg-red-500/10 hover:text-red-300 rounded-lg transition-colors`}
+            title={isSidebarCollapsed ? t.logOut : ''}
           >
             <LogOut size={20} />
-            <span className="text-sm">{t.logOut}</span>
+            {!isSidebarCollapsed && <span className="text-sm whitespace-nowrap">{t.logOut}</span>}
           </button>
         </div>
       </aside>

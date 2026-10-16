@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { AlertCircle, Loader, Download } from 'lucide-react';
+import { AlertCircle, Loader, Download, TrendingUp, Calendar } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { useLocation } from 'react-router-dom';
-import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, Cell } from 'recharts';
+import { ComposedChart, Line, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, LabelList } from 'recharts';
 
 const Dashboard = ({ isAll }) => {
   const location = useLocation();
@@ -34,22 +34,39 @@ const Dashboard = ({ isAll }) => {
     const fetchBaseData = async () => {
       try {
         const chartRes = await axios.get('http://localhost:5000/api/spk/chart');
-        
+
         // Format chart history dates
-        const formattedHistory = chartRes.data.map(item => {
-           // item.tanggal is now formatted as YYYY-MM-DD from backend
-           const [year, month, day] = item.tanggal.split('-');
-           return {
-             ...item,
-             labelTanggal: `${parseInt(day)}/${parseInt(month)}`,
-             manpower: item.manpower || 0
-           };
+        const monthNames = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Ags", "Sep", "Okt", "Nov", "Des"];
+
+        let dataToProcess = chartRes.data;
+        if (!dataToProcess || dataToProcess.length === 0) {
+          const days = [];
+          const end = new Date();
+          const start = new Date();
+          start.setDate(end.getDate() - 6);
+          for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+            days.push({
+              tanggal: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`,
+              total_wo: 0, total_sb: 0, waktu_v: 0, waktu_h: 0, waktu_c: 0, qty_h: 0, qty_c: 0, manpower: 0
+            });
+          }
+          dataToProcess = days;
+        }
+
+        const formattedHistory = dataToProcess.map(item => {
+          // item.tanggal is now formatted as YYYY-MM-DD from backend
+          const [year, month, day] = item.tanggal.split('-');
+          return {
+            ...item,
+            labelTanggal: `${parseInt(day)} ${monthNames[parseInt(month) - 1]}`,
+            manpower: item.manpower || 0
+          };
         });
         setChartHistory(formattedHistory);
 
         // Get unique dates for dropdown
         const dates = [...new Set(chartRes.data.map(item => item.tanggal))];
-        setAvailableDates(dates.sort((a,b) => new Date(b) - new Date(a)));
+        setAvailableDates(dates.sort((a, b) => new Date(b) - new Date(a)));
       } catch (error) {
         console.error('Error fetching base data:', error);
       }
@@ -62,7 +79,7 @@ const Dashboard = ({ isAll }) => {
       setLoading(true);
       try {
         let dashUrl = 'http://localhost:5000/api/spk/dashboard';
-        
+
         if (selectedDate === 'Semua') {
           dashUrl += '?all=true';
         } else if (selectedDate === 'History' && historyId) {
@@ -76,6 +93,9 @@ const Dashboard = ({ isAll }) => {
         setPlanningMetrics(dashRes.data.metrics);
         setPlanningData(dashRes.data.planningData);
         setCurrentSpkName(dashRes.data.currentSpkName);
+        if (dashRes.data.availableDates && dashRes.data.availableDates.length > 0) {
+          setAvailableDates(dashRes.data.availableDates);
+        }
       } catch (error) {
         console.error('Error fetching dashboard:', error);
       } finally {
@@ -114,8 +134,8 @@ const Dashboard = ({ isAll }) => {
         body: tableRows,
         startY: 32,
         styles: { fontSize: 8, cellPadding: 2 },
-        headStyles: { fillColor: [11, 31, 68] }, 
-        alternateRowStyles: { fillColor: [248, 250, 252] }, 
+        headStyles: { fillColor: [11, 31, 68] },
+        alternateRowStyles: { fillColor: [248, 250, 252] },
         margin: { top: 32 }
       });
 
@@ -152,8 +172,8 @@ const Dashboard = ({ isAll }) => {
   if (loading && chartHistory.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center h-full text-accent-blue">
-         <Loader size={36} className="animate-spin mb-4" />
-         <p className="font-bold text-navy-dark">Memuat Data Dashboard...</p>
+        <Loader size={36} className="animate-spin mb-4" />
+        <p className="font-bold text-navy-dark">Memuat Data Dashboard...</p>
       </div>
     );
   }
@@ -161,25 +181,25 @@ const Dashboard = ({ isAll }) => {
   // Calculate machine utilization
   const shiftMinutes = 420; // 7 Jam
   const calculateUtil = (waktu, mesin) => {
-      if (!mesin || mesin === 0) return 0;
-      return Math.min(100, (waktu / (mesin * shiftMinutes)) * 100);
+    if (!mesin || mesin === 0) return 0;
+    return Math.min(100, (waktu / (mesin * shiftMinutes)) * 100);
   };
 
   const barChartData = [
-    { 
-        name: `Vertikal (${planningMetrics.mesinBreakdown?.Vertikal || 0} Unit)`, 
-        utilisasi: calculateUtil(planningMetrics.waktuBreakdown?.Vertikal, planningMetrics.mesinBreakdown?.Vertikal),
-        color: '#f59e0b'
+    {
+      name: `Vertikal (${planningMetrics.mesinBreakdown?.Vertikal || 0} Unit)`,
+      utilisasi: calculateUtil(planningMetrics.waktuBreakdown?.Vertikal, planningMetrics.mesinBreakdown?.Vertikal),
+      color: '#f59e0b'
     },
-    { 
-        name: `Horizontal (${planningMetrics.mesinBreakdown?.Horizontal || 0} Unit)`, 
-        utilisasi: calculateUtil(planningMetrics.waktuBreakdown?.Horizontal, planningMetrics.mesinBreakdown?.Horizontal),
-        color: '#3b82f6'
+    {
+      name: `Horizontal (${planningMetrics.mesinBreakdown?.Horizontal || 0} Unit)`,
+      utilisasi: calculateUtil(planningMetrics.waktuBreakdown?.Horizontal, planningMetrics.mesinBreakdown?.Horizontal),
+      color: '#3b82f6'
     },
-    { 
-        name: `Carousel (${planningMetrics.mesinBreakdown?.Carousel || 0} Unit)`, 
-        utilisasi: calculateUtil(planningMetrics.waktuBreakdown?.Carousel, planningMetrics.mesinBreakdown?.Carousel),
-        color: '#8b5cf6'
+    {
+      name: `Carousel (${planningMetrics.mesinBreakdown?.Carousel || 0} Unit)`,
+      utilisasi: calculateUtil(planningMetrics.waktuBreakdown?.Carousel, planningMetrics.mesinBreakdown?.Carousel),
+      color: '#8b5cf6'
     },
   ];
 
@@ -188,131 +208,152 @@ const Dashboard = ({ isAll }) => {
     return row.tipe_mesin?.toLowerCase() === activeMesinTab.toLowerCase();
   });
 
-  // Calculate Global Averages
-  let avgManpower = 0;
-  let avgUtilisasi = 0;
-  if (chartHistory.length > 0) {
-      avgManpower = chartHistory.reduce((acc, curr) => acc + curr.manpower, 0) / chartHistory.length;
-      // Asumsi 3 mesin beroperasi tiap hari (1V, 1H, 1C) = 1260 menit kapasitas total (3 x 420)
-      avgUtilisasi = chartHistory.reduce((acc, curr) => {
-          const util = (curr.total_waktu_spk / 1260) * 100;
-          return acc + (util > 100 ? 100 : util);
-      }, 0) / chartHistory.length;
-  }
+
   // Filter chart data based on selected date
   const filteredChartHistory = (selectedDate === 'Semua' || selectedDate === 'History')
-      ? chartHistory
-      : chartHistory.filter(item => item.tanggal === selectedDate);
+    ? chartHistory
+    : chartHistory.filter(item => item.tanggal === selectedDate);
 
   return (
     <div className="flex flex-col gap-6 p-2">
       <div className="flex flex-col gap-6 animate-in fade-in duration-300">
-        
-        {/* FILTER & AVERAGES HEADER */}
-        <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-            <div className="flex flex-col gap-2">
-                <label className="text-sm font-bold text-navy-dark">Tampilkan Data Berdasarkan:</label>
-                <div className="flex items-center gap-3">
-                    <input 
-                        type="date" 
-                        value={selectedDate === 'Semua' || selectedDate === 'History' ? '' : selectedDate}
-                        onChange={(e) => setSelectedDate(e.target.value || 'Semua')}
-                        className="bg-gray-50 border border-gray-300 text-navy-dark text-sm rounded-lg focus:ring-accent-blue focus:border-accent-blue block p-2.5 font-medium shadow-sm outline-none"
-                    />
-                    {selectedDate !== 'Semua' && (
-                        <button 
-                            onClick={() => setSelectedDate('Semua')}
-                            className="bg-gray-200 hover:bg-gray-300 text-gray-700 px-3 py-2.5 rounded-lg text-sm font-semibold transition-colors flex items-center justify-center whitespace-nowrap"
-                        >
-                            Tampilkan Semua
-                        </button>
-                    )}
-                </div>
+
+        {/* CHARTS CONTAINER (Unified Layout similar to Planning vs Realisasi) */}
+        <div className="rounded-xl shadow-sm border p-6 bg-white border-gray-200">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
+            <h2 className="text-lg font-bold flex items-center gap-2 text-navy-dark">
+              <TrendingUp className="text-blue-500" /> Tren Rencana Produksi (Rentang Waktu)
+            </h2>
+
+            {/* FILTER HEADER (Date Picker) */}
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="flex items-center gap-2 p-1.5 rounded-lg border shadow-sm bg-white border-gray-200">
+                <Calendar size={15} className="text-blue-500 ml-1 shrink-0" />
+                <label className="text-xs font-bold text-gray-500">Tampilkan:</label>
+                <input
+                  type="date"
+                  value={selectedDate === 'Semua' || selectedDate === 'History' ? '' : selectedDate}
+                  onChange={(e) => setSelectedDate(e.target.value || 'Semua')}
+                  className="border-none bg-transparent px-1 py-0.5 text-xs sm:text-sm outline-none font-semibold text-gray-700 cursor-pointer"
+                />
+                {availableDates && availableDates.length > 0 && (
+                  <select
+                    value={selectedDate}
+                    onChange={(e) => setSelectedDate(e.target.value)}
+                    className="bg-gray-50 border border-gray-200 rounded text-xs font-semibold text-gray-700 px-2 py-1 outline-none cursor-pointer"
+                  >
+                    <option value="Semua">Semua Tanggal</option>
+                    {availableDates.map(d => (
+                      <option key={d} value={d}>{d}</option>
+                    ))}
+                  </select>
+                )}
+                {selectedDate !== 'Semua' && (
+                  <button
+                    onClick={() => setSelectedDate('Semua')}
+                    className="bg-red-50 hover:bg-red-100 text-red-600 px-2 py-1 rounded text-xs font-semibold transition-colors"
+                  >
+                    Reset
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+
+            {/* 1. Total WO (Bar Chart) */}
+            <div className="border rounded-lg p-4 border-gray-100 bg-gray-50/50">
+              <h3 className="font-bold text-sm mb-4 text-center text-blue-500">Total Work Order (Prediksi)</h3>
+              <div className="w-full h-44">
+                <ResponsiveContainer width="100%" height="100%">
+                  <ComposedChart data={filteredChartHistory} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
+                    <XAxis dataKey="labelTanggal" axisLine={false} tickLine={false} tick={{ fill: '#6b7280', fontSize: 12 }} />
+                    <YAxis axisLine={false} tickLine={false} tick={{ fill: '#6b7280', fontSize: 12 }} allowDecimals={false} />
+                    <Tooltip cursor={{ fill: '#f3f4f6' }} />
+                    <Bar dataKey="total_wo" name="Total WO" fill="#3b82f6" radius={[4, 4, 0, 0]} maxBarSize={40}>
+                      <LabelList dataKey="total_wo" position="top" style={{ fill: '#6b7280', fontSize: 11, fontWeight: 'bold' }} formatter={(val) => val > 0 ? val : ''} />
+                    </Bar>
+                    <Line type="monotone" dataKey="total_wo" stroke="#f59e0b" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
+                  </ComposedChart>
+                </ResponsiveContainer>
+              </div>
             </div>
 
-            <div className="flex gap-4 w-full md:w-auto">
-                <AverageCard title="Rata-rata Utilisasi" value={`${avgUtilisasi.toFixed(1)}%`} subtext="Dari seluruh data (7 Hari)" />
-                <AverageCard title="Rata-rata Manpower" value={`${Math.round(avgManpower)} Orang`} subtext="Dari seluruh data (7 Hari)" />
-            </div>
-        </div>
-
-
-        {/* CHARTS SECTION (Replaced Summary Cards & Old Charts) */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            
-            {/* 1. Total Mesin (Bar Chart) */}
-            <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100">
-                <h3 className="font-bold text-navy-dark mb-4">Total Mesin Beroperasi (Prediksi)</h3>
-                <div className="w-full h-64">
-                    <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={filteredChartHistory} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
-                            <XAxis dataKey="labelTanggal" axisLine={false} tickLine={false} tick={{fill: '#6b7280', fontSize: 12}} />
-                            <YAxis axisLine={false} tickLine={false} tick={{fill: '#6b7280', fontSize: 12}} allowDecimals={false} />
-                            <Tooltip cursor={{fill: '#f3f4f6'}} />
-                            <Legend wrapperStyle={{ fontSize: '12px' }} />
-                            <Bar dataKey="mesin_v" name="Vertikal" fill="#f59e0b" radius={[4, 4, 0, 0]} maxBarSize={40} />
-                            <Bar dataKey="mesin_h" name="Horizontal" fill="#3b82f6" radius={[4, 4, 0, 0]} maxBarSize={40} />
-                            <Bar dataKey="mesin_c" name="Carousel" fill="#8b5cf6" radius={[4, 4, 0, 0]} maxBarSize={40} />
-                        </BarChart>
-                    </ResponsiveContainer>
-                </div>
+            {/* 2. Kebutuhan Short Block */}
+            <div className="border rounded-lg p-4 border-gray-100 bg-gray-50/50">
+              <h3 className="font-bold text-sm mb-4 text-center text-red-500">Kebutuhan Short Block (SB)</h3>
+              <div className="w-full h-44">
+                <ResponsiveContainer width="100%" height="100%">
+                  <ComposedChart data={filteredChartHistory} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
+                    <XAxis dataKey="labelTanggal" axisLine={false} tickLine={false} tick={{ fill: '#6b7280', fontSize: 12 }} />
+                    <YAxis axisLine={false} tickLine={false} tick={{ fill: '#6b7280', fontSize: 12 }} />
+                    <Tooltip cursor={{ fill: '#f3f4f6' }} formatter={(value) => typeof value === 'number' ? Number(value).toFixed(2) : value} />
+                    <Bar dataKey="total_sb" name="Total SB" fill="#ef4444" radius={[4, 4, 0, 0]} maxBarSize={40}>
+                      <LabelList dataKey="total_sb" position="top" style={{ fill: '#6b7280', fontSize: 11, fontWeight: 'bold' }} formatter={(val) => val > 0 ? val.toFixed(1).replace(/\.0$/, '') : ''} />
+                    </Bar>
+                    <Line type="monotone" dataKey="total_sb" stroke="#3b82f6" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
+                  </ComposedChart>
+                </ResponsiveContainer>
+              </div>
             </div>
 
-            {/* 2. Total Manpower (Bar Chart) */}
-            <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100">
-                <h3 className="font-bold text-navy-dark mb-4">Total Manpower (Prediksi)</h3>
-                <div className="w-full h-64">
-                    <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={filteredChartHistory} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
-                            <XAxis dataKey="labelTanggal" axisLine={false} tickLine={false} tick={{fill: '#6b7280', fontSize: 12}} />
-                            <YAxis axisLine={false} tickLine={false} tick={{fill: '#6b7280', fontSize: 12}} allowDecimals={false} />
-                            <Tooltip cursor={{fill: '#f3f4f6'}} />
-                            <Legend wrapperStyle={{ fontSize: '12px' }} />
-                            <Bar dataKey="mp_v" name="MP Vertikal" fill="#f59e0b" radius={[4, 4, 0, 0]} maxBarSize={40} />
-                            <Bar dataKey="mp_h" name="MP Horizontal" fill="#3b82f6" radius={[4, 4, 0, 0]} maxBarSize={40} />
-                            <Bar dataKey="mp_c" name="MP Carousel" fill="#8b5cf6" radius={[4, 4, 0, 0]} maxBarSize={40} />
-                        </BarChart>
-                    </ResponsiveContainer>
-                </div>
+            {/* 3. Estimasi Waktu SPK */}
+            <div className="border rounded-lg p-4 border-gray-100 bg-gray-50/50">
+              <h3 className="font-bold text-sm mb-4 text-center text-orange-500">Estimasi Waktu Per Mesin (Menit)</h3>
+              <div className="w-full h-44">
+                <ResponsiveContainer width="100%" height="100%">
+                  <ComposedChart data={filteredChartHistory} margin={{ top: 10, right: 10, left: -20, bottom: 0 }} barCategoryGap="10%" barGap={1}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
+                    <XAxis dataKey="labelTanggal" axisLine={false} tickLine={false} tick={{ fill: '#6b7280', fontSize: 12 }} />
+                    <YAxis axisLine={false} tickLine={false} tick={{ fill: '#6b7280', fontSize: 12 }} />
+                    <Tooltip cursor={{ fill: '#f3f4f6' }} formatter={(value) => typeof value === 'number' ? Number(value).toFixed(2) : value} />
+                    <Bar dataKey="waktu_v" name="Vertikal" fill="#f59e0b" radius={[4, 4, 0, 0]} maxBarSize={40}>
+                      <LabelList dataKey="waktu_v" position="top" style={{ fill: '#6b7280', fontSize: 11, fontWeight: 'bold' }} formatter={(val) => val > 0 ? Math.round(val) : ''} />
+                    </Bar>
+                    <Bar dataKey="waktu_h" name="Horizontal" fill="#3b82f6" radius={[4, 4, 0, 0]} maxBarSize={40}>
+                      <LabelList dataKey="waktu_h" position="top" style={{ fill: '#6b7280', fontSize: 11, fontWeight: 'bold' }} formatter={(val) => val > 0 ? Math.round(val) : ''} />
+                    </Bar>
+                    <Bar dataKey="waktu_c" name="Carousel" fill="#8b5cf6" radius={[4, 4, 0, 0]} maxBarSize={40}>
+                      <LabelList dataKey="waktu_c" position="top" style={{ fill: '#6b7280', fontSize: 11, fontWeight: 'bold' }} formatter={(val) => val > 0 ? Math.round(val) : ''} />
+                    </Bar>
+                    <Line type="monotone" dataKey="waktu_v" stroke="#b45309" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
+                    <Line type="monotone" dataKey="waktu_h" stroke="#1d4ed8" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
+                    <Line type="monotone" dataKey="waktu_c" stroke="#6d28d9" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
+                  </ComposedChart>
+                </ResponsiveContainer>
+              </div>
             </div>
 
-            {/* 3. Kebutuhan Short Block */}
-            <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100">
-                <h3 className="font-bold text-navy-dark mb-4">Kebutuhan Short Block (SB)</h3>
-                <div className="w-full h-64">
-                    <ResponsiveContainer width="100%" height="100%">
-                        <LineChart data={filteredChartHistory} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
-                            <XAxis dataKey="labelTanggal" axisLine={false} tickLine={false} tick={{fill: '#6b7280', fontSize: 12}} />
-                            <YAxis axisLine={false} tickLine={false} tick={{fill: '#6b7280', fontSize: 12}} />
-                            <Tooltip labelStyle={{color: '#1f2937', fontWeight: 'bold'}} formatter={(value) => typeof value === 'number' ? Number(value).toFixed(2) : value} />
-                            <Legend wrapperStyle={{ fontSize: '12px' }} />
-                            <Line type="monotone" dataKey="total_sb" name="Total SB" stroke="#ef4444" strokeWidth={3} dot={{ fill: '#ef4444', strokeWidth: 2, r: 4 }} activeDot={{ r: 6 }} />
-                        </LineChart>
-                    </ResponsiveContainer>
-                </div>
+            {/* 4. Total Manpower (Bar Chart) */}
+            <div className="border rounded-lg p-4 border-gray-100 bg-gray-50/50">
+              <h3 className="font-bold text-sm mb-4 text-center text-purple-500">Total Manpower (Prediksi)</h3>
+              <div className="w-full h-44">
+                <ResponsiveContainer width="100%" height="100%">
+                  <ComposedChart data={filteredChartHistory} margin={{ top: 10, right: 10, left: -20, bottom: 0 }} barCategoryGap="10%" barGap={1}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
+                    <XAxis dataKey="labelTanggal" axisLine={false} tickLine={false} tick={{ fill: '#6b7280', fontSize: 12 }} />
+                    <YAxis axisLine={false} tickLine={false} tick={{ fill: '#6b7280', fontSize: 12 }} allowDecimals={false} />
+                    <Tooltip cursor={{ fill: '#f3f4f6' }} />
+                    <Bar dataKey="mp_v" name="MP Vertikal" fill="#f59e0b" radius={[4, 4, 0, 0]} maxBarSize={40}>
+                      <LabelList dataKey="mp_v" position="top" style={{ fill: '#6b7280', fontSize: 11, fontWeight: 'bold' }} formatter={(val) => val > 0 ? val : ''} />
+                    </Bar>
+                    <Bar dataKey="mp_h" name="MP Horizontal" fill="#3b82f6" radius={[4, 4, 0, 0]} maxBarSize={40}>
+                      <LabelList dataKey="mp_h" position="top" style={{ fill: '#6b7280', fontSize: 11, fontWeight: 'bold' }} formatter={(val) => val > 0 ? val : ''} />
+                    </Bar>
+                    <Bar dataKey="mp_c" name="MP Carousel" fill="#8b5cf6" radius={[4, 4, 0, 0]} maxBarSize={40}>
+                      <LabelList dataKey="mp_c" position="top" style={{ fill: '#6b7280', fontSize: 11, fontWeight: 'bold' }} formatter={(val) => val > 0 ? val : ''} />
+                    </Bar>
+                    <Line type="monotone" dataKey="mp_v" stroke="#b45309" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
+                    <Line type="monotone" dataKey="mp_h" stroke="#1d4ed8" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
+                    <Line type="monotone" dataKey="mp_c" stroke="#6d28d9" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
+                  </ComposedChart>
+                </ResponsiveContainer>
+              </div>
             </div>
-
-            {/* 4. Estimasi Waktu SPK */}
-            <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100">
-                <h3 className="font-bold text-navy-dark mb-4">Estimasi Waktu Per Mesin (Menit)</h3>
-                <div className="w-full h-64">
-                    <ResponsiveContainer width="100%" height="100%">
-                        <LineChart data={filteredChartHistory} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
-                            <XAxis dataKey="labelTanggal" axisLine={false} tickLine={false} tick={{fill: '#6b7280', fontSize: 12}} />
-                            <YAxis axisLine={false} tickLine={false} tick={{fill: '#6b7280', fontSize: 12}} />
-                            <Tooltip labelStyle={{color: '#1f2937', fontWeight: 'bold'}} formatter={(value) => typeof value === 'number' ? Number(value).toFixed(2) : value} />
-                            <Legend wrapperStyle={{ fontSize: '12px' }} />
-                            <Line type="monotone" dataKey="waktu_v" name="Vertikal" stroke="#f59e0b" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
-                            <Line type="monotone" dataKey="waktu_h" name="Horizontal" stroke="#3b82f6" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
-                            <Line type="monotone" dataKey="waktu_c" name="Carousel" stroke="#8b5cf6" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
-                        </LineChart>
-                    </ResponsiveContainer>
-                </div>
-            </div>
+          </div>
         </div>
 
         {/* ALERT ANOMALI */}
@@ -327,27 +368,84 @@ const Dashboard = ({ isAll }) => {
 
         {/* TABEL PLANNING */}
         <div className="bg-white rounded-xl shadow-md border border-gray-100 overflow-hidden">
-          <div className="p-5 border-b border-gray-100 flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 bg-gray-50/50 print:hidden">
-            <h3 className="font-bold text-navy-dark text-lg">Rencana Produksi SPK</h3>
-            
-            <div className="flex flex-col sm:flex-row items-center gap-4 w-full lg:w-auto">
+          <div className="p-5 border-b border-gray-100 flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4 bg-gray-50/50 print:hidden">
+            <div>
+              <h3 className="font-bold text-navy-dark text-lg flex items-center gap-2">
+                Rencana Produksi SPK
+              </h3>
+              <p className="text-xs text-gray-500 font-medium mt-0.5">
+                {selectedDate === 'Semua' 
+                  ? 'Menampilkan semua riwayat perencanaan SPK' 
+                  : (selectedDate === 'History' ? currentSpkName : `Filter Tanggal: ${selectedDate}`)}
+                <span className="ml-2 font-bold text-navy-dark">({filteredData.length} Item)</span>
+              </p>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-3 w-full xl:w-auto">
+              {/* FILTER TANGGAL */}
+              <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-lg px-2.5 py-1.5 shadow-sm">
+                <Calendar size={15} className="text-accent-blue shrink-0" />
+                <span className="text-xs font-semibold text-gray-500">Tanggal:</span>
+                <input
+                  type="date"
+                  value={selectedDate === 'Semua' || selectedDate === 'History' ? '' : selectedDate}
+                  onChange={(e) => setSelectedDate(e.target.value || 'Semua')}
+                  className="bg-transparent text-xs font-bold text-navy-dark outline-none cursor-pointer"
+                />
+                {availableDates && availableDates.length > 0 && (
+                  <select
+                    value={selectedDate}
+                    onChange={(e) => setSelectedDate(e.target.value)}
+                    className="bg-gray-50 border border-gray-200 rounded text-xs font-semibold text-gray-700 px-2 py-1 outline-none cursor-pointer"
+                  >
+                    <option value="Semua">Semua Tanggal</option>
+                    {availableDates.map(d => (
+                      <option key={d} value={d}>{d}</option>
+                    ))}
+                  </select>
+                )}
+                <button
+                  onClick={() => {
+                    const today = new Date();
+                    const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+                    setSelectedDate(todayStr);
+                  }}
+                  className="text-xs px-2 py-1 rounded font-semibold bg-gray-100 hover:bg-gray-200 text-gray-700 transition-colors"
+                  title="Lihat Tanggal Hari Ini"
+                >
+                  Hari Ini
+                </button>
+                {selectedDate !== 'Semua' && (
+                  <button
+                    onClick={() => setSelectedDate('Semua')}
+                    className="text-xs bg-red-50 hover:bg-red-100 text-red-600 font-bold px-2 py-1 rounded transition-colors"
+                    title="Tampilkan Semua Tanggal"
+                  >
+                    Reset
+                  </button>
+                )}
+              </div>
+
+              {/* TABS MESIN */}
               <div className="flex bg-gray-200/60 p-1 rounded-lg">
                 {['Semua', 'Vertikal', 'Horizontal', 'Carousel'].map((tab) => (
                   <button
                     key={tab}
                     onClick={() => setActiveMesinTab(tab)}
-                    className={`px-4 py-1.5 rounded-md text-sm font-semibold transition-colors ${activeMesinTab === tab ? 'bg-white text-navy-dark shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                    className={`px-3 py-1.5 rounded-md text-xs sm:text-sm font-semibold transition-colors ${activeMesinTab === tab ? 'bg-white text-navy-dark shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
                   >
                     {tab}
                   </button>
                 ))}
               </div>
-              <button onClick={handleExportPDF} className="flex items-center gap-2 bg-navy-dark text-white px-4 py-2 rounded-lg font-bold text-sm hover:bg-opacity-90 transition-colors shadow-sm whitespace-nowrap">
-                <Download size={16} /> Export PDF
+
+              {/* EXPORT PDF */}
+              <button onClick={handleExportPDF} className="flex items-center gap-2 bg-navy-dark text-white px-3.5 py-2 rounded-lg font-bold text-xs sm:text-sm hover:bg-opacity-90 transition-colors shadow-sm whitespace-nowrap">
+                <Download size={15} /> Export PDF
               </button>
             </div>
           </div>
-          
+
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse min-w-[800px]">
               <thead>
@@ -363,7 +461,7 @@ const Dashboard = ({ isAll }) => {
                   <tr key={idx} className={`border-b border-gray-100 transition-colors ${row.isAnomaly ? 'bg-red-50 hover:bg-red-100' : 'hover:bg-gray-50/80'}`}>
                     <td className="p-4 pl-6">
                       <div className="font-bold text-navy-dark text-[15px] leading-snug">
-                        {row.item} 
+                        {row.item}
                         {row.ukuran_p > 0 && <span className="text-gray-500 font-normal"> ({row.ukuran_p} x {row.ukuran_l} x {row.ukuran_t})</span>}
                       </div>
                       <div className="text-xs text-gray-400 font-medium mt-0.5 uppercase tracking-wide">
@@ -394,8 +492,21 @@ const Dashboard = ({ isAll }) => {
                 ))}
                 {filteredData.length === 0 && (
                   <tr>
-                    <td colSpan="4" className="p-8 text-center text-gray-400 font-medium">
-                      Tidak ada data rencana produksi untuk area {activeMesinTab}.
+                    <td colSpan="4" className="p-10 text-center text-gray-400 font-medium">
+                      <div className="flex flex-col items-center justify-center gap-2">
+                        <Calendar size={32} className="text-gray-300 mb-1" />
+                        <p className="text-sm font-semibold text-gray-600">
+                          Tidak ada data rencana produksi untuk area <span className="font-bold text-navy-dark">{activeMesinTab}</span> {selectedDate !== 'Semua' ? `pada tanggal ${selectedDate}` : ''}.
+                        </p>
+                        {selectedDate !== 'Semua' && (
+                          <button
+                            onClick={() => setSelectedDate('Semua')}
+                            className="mt-2 text-xs font-bold text-accent-blue hover:underline bg-blue-50 px-3 py-1.5 rounded-lg border border-blue-200 transition-colors"
+                          >
+                            Tampilkan Semua Riwayat Tanggal
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 )}

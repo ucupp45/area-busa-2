@@ -8,6 +8,17 @@ router.post('/', realisasiController.createRealisasi);
 // Ambil semua data realisasi (GET /api/realisasi)
 router.get('/', realisasiController.getAllRealisasi);
 
+// Ambil semua stok sisa potong (GET /api/realisasi/sisa-potong/all)
+router.get('/sisa-potong/all', realisasiController.getAllSisaPotong);
+
+// CRUD Stok Sisa Potong Manual
+router.post('/sisa-potong', realisasiController.createSisaPotongManual);
+router.put('/sisa-potong/:id', realisasiController.updateSisaPotong);
+router.delete('/sisa-potong/:id', realisasiController.deleteSisaPotong);
+
+// Ambil sisa potong berdasarkan barcode (GET /api/realisasi/sisa-potong/:barcode)
+router.get('/sisa-potong/:barcode', realisasiController.getSisaPotongByBarcode);
+
 // Ambil data analisis vertikal (GET /api/realisasi/hasil/vertikal)
 router.get('/hasil/vertikal', realisasiController.getHasilRealisasiVertikal);
 

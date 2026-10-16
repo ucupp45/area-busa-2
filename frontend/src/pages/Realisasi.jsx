@@ -46,35 +46,111 @@ const emptyCarouselItem = {
   dt_kode: '', dt_jam_awal: '', dt_jam_akhir: '', dt_keterangan: ''
 };
 
-const initialFormState = {
+const getInitialFormState = () => ({
   // Identitas
-  kualitas: '', no_barcode: '', tanggal: '', no_spk: '', nama_operator: '', shift: 'Shift 1', grup: 'Grup A',
+  kualitas: '', barcode_status: 'Normal', no_barcode: '', no_barcode_extra: '', tanggal: '', no_spk: '', nama_operator: '', shift: 'Shift 1', grup: 'Grup A',
   asal_p: '', asal_l: '', asal_t: '', asal_qty: '', keterangan_kondisi: '',
   // Vertical
   no_mesin: 'V1',
   hasil_p: '', hasil_l: '', hasil_t: '', hasil_qty: '',
   waste_samping_p: '', waste_samping_l: '', waste_samping_t: '', waste_samping_qty: '',
   waste_dpn_blk_p: '', waste_dpn_blk_l: '', waste_dpn_blk_t: '', waste_dpn_blk_qty: '',
+  waste_produksi_p: '', waste_produksi_l: '', waste_produksi_t: '', waste_produksi_qty: '',
   sisa_p: '', sisa_l: '', sisa_t: '', sisa_qty: '', sisa_keterangan: '',
   dt_kode: '', dt_jam_awal: '', dt_jam_akhir: '', dt_keterangan: '',
-  // Carousel Array
+  sisa_potong_id_used: null,
+
+  // Carousel Multiple ItemsArray
   carousel_items: [{ ...emptyCarouselItem }]
-};
+});
 
 const Realisasi = () => {
   const { prefs } = useSettings();
   const [activeTab, setActiveTab] = useState('input');
-  const [formData, setFormData] = useState(initialFormState);
+  const [formData, setFormData] = useState(getInitialFormState());
   const [editId, setEditId] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [notification, setNotification] = useState({ show: false, message: '', type: 'success' });
   const [alertModal, setAlertModal] = useState({ show: false, message: '' });
+  const [confirmModal, setConfirmModal] = useState({ show: false, message: '', onConfirm: null });
+
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (confirmModal.show && e.key === 'Enter') {
+        e.preventDefault();
+        if (confirmModal.onConfirm) confirmModal.onConfirm();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [confirmModal]);
 
   const [realisasiData, setRealisasiData] = useState([]);
   const [activeWOs, setActiveWOs] = useState([]);
   const [isLoadingData, setIsLoadingData] = useState(false);
 
   const [selectedDetail, setSelectedDetail] = useState(null);
+
+  // --- SISA POTONG LOGIC ---
+  const [availableSispots, setAvailableSispots] = useState([]);
+  const [showSispotModal, setShowSispotModal] = useState(false);
+
+  useEffect(() => {
+    const fetchSispots = async () => {
+      if (formData.no_barcode && formData.no_barcode.length >= 8 && !editId && !formData.sisa_potong_id_used) {
+        try {
+          const res = await axios.get(`http://localhost:5000/api/realisasi/sisa-potong/${formData.no_barcode}`);
+          if (res.data.success && res.data.data.length > 0) {
+            const sispots = res.data.data;
+            if (sispots.length === 1) {
+              const sp = sispots[0];
+              setFormData(prev => ({
+                ...prev,
+                asal_p: sp.p,
+                asal_l: sp.l,
+                asal_t: sp.t,
+                asal_qty: sp.qty,
+                kualitas: sp.kualitas || prev.kualitas,
+                sisa_potong_id_used: sp.id
+              }));
+              setShowSispotModal(false);
+            } else {
+              setAvailableSispots(sispots);
+              setShowSispotModal(true);
+            }
+          }
+        } catch (error) {
+          console.error("Gagal mengambil Sisa Potong:", error);
+        }
+      }
+    };
+    
+    const timeoutId = setTimeout(fetchSispots, 800);
+    return () => clearTimeout(timeoutId);
+  }, [formData.no_barcode, editId, formData.sisa_potong_id_used]);
+
+  const calculateAging = (dateString) => {
+    const createdDate = new Date(dateString);
+    const now = new Date();
+    const diffTime = Math.abs(now - createdDate);
+    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+    if (diffDays === 0) return "Hari ini";
+    return `Sudah ${diffDays} hari mengendap`;
+  };
+
+  const handleSelectSispot = (sispot) => {
+    setFormData(prev => ({
+      ...prev,
+      asal_p: sispot ? sispot.p : '',
+      asal_l: sispot ? sispot.l : '',
+      asal_t: sispot ? sispot.t : '',
+      asal_qty: sispot ? sispot.qty : '',
+      kualitas: sispot ? sispot.kualitas : prev.kualitas,
+      sisa_potong_id_used: sispot ? sispot.id : null
+    }));
+    setShowSispotModal(false);
+  };
+  // -------------------------
 
   const calculateDurationMinutes = (start, end) => {
     if (!start || !end) return '';
@@ -101,8 +177,8 @@ const Realisasi = () => {
 
   const [wosByDate, setWosByDate] = useState({});
 
-  const fetchActiveWOs = async (date = '') => {
-    if (date && wosByDate[date]) return; // cache hit
+  const fetchActiveWOs = async (date = '', force = false) => {
+    if (date && wosByDate[date] && wosByDate[date].length > 0 && !force) return; // cache hit only if not empty
     try {
       const dateParam = date ? `?tanggal=${date}` : '';
       const res = await axios.get(`http://localhost:5000/api/spk/wo/active${dateParam}`);
@@ -129,7 +205,7 @@ const Realisasi = () => {
   const handleTanggalWoChange = (index, value) => {
     handleCarouselChange(index, { target: { name: 'tanggal_wo', value } });
     if (value) {
-      fetchActiveWOs(value); // preload
+      fetchActiveWOs(value, true); // preload fresh data
     }
   };
 
@@ -266,6 +342,16 @@ const Realisasi = () => {
     const { name, value } = e.target;
     setFormData(prev => {
       const updated = { ...prev, [name]: value };
+
+      // If barcode changes, reset sispot autofill
+      if (name === 'no_barcode' && prev.sisa_potong_id_used) {
+        updated.sisa_potong_id_used = null;
+        updated.asal_p = '';
+        updated.asal_l = '';
+        updated.asal_t = '';
+        updated.asal_qty = '';
+        updated.kualitas = '';
+      }
 
       // Auto-fill logic for Horizontal (Carousel)
       if (name === 'hasil_p') {
@@ -453,7 +539,7 @@ const Realisasi = () => {
   const handleCarouselChange = (index, e) => {
     const { name, value } = e.target;
     const newItems = [...formData.carousel_items];
-    newItems[index][name] = value;
+    newItems[index] = { ...newItems[index], [name]: value };
 
     // Auto-fill down to waste items
     if (name === 'hasil2_p') {
@@ -486,16 +572,38 @@ const Realisasi = () => {
 
   const handleWoSelect = (index, value) => {
     const newItems = [...formData.carousel_items];
-    newItems[index].no_wo = value;
+    newItems[index] = { ...newItems[index], no_wo: value };
 
-    // Auto fill
-    const woData = activeWOs.find(w => w.no_wo === value);
+    // Auto fill: Cari di daftar WO yang sesuai dengan tanggal aktif maupun activeWOs global
+    const itemDate = newItems[index].tanggal_wo;
+    const woList = (itemDate && wosByDate[itemDate] && wosByDate[itemDate].length > 0)
+      ? wosByDate[itemDate]
+      : activeWOs;
+
+    const woData = woList.find(w => w.no_wo === value) 
+      || activeWOs.find(w => w.no_wo === value)
+      || (wosByDate[itemDate] || []).find(w => w.no_wo === value);
+
     if (woData) {
-      newItems[index].hasil2_t = woData.ukuran_t || '';
+      if (woData.ukuran_p) {
+        newItems[index].hasil2_p = Number(woData.ukuran_p);
+        newItems[index].waste_kulit_p = Number(woData.ukuran_p);
+        newItems[index].waste_potong_p = Number(woData.ukuran_p);
+        newItems[index].waste_produksi_p = Number(woData.ukuran_p);
+        newItems[index].sispot_p = Number(woData.ukuran_p);
+      }
+      if (woData.ukuran_l) {
+        newItems[index].hasil2_l = Number(woData.ukuran_l);
+        newItems[index].waste_kulit_l = Number(woData.ukuran_l);
+        newItems[index].waste_potong_l = Number(woData.ukuran_l);
+        newItems[index].waste_produksi_l = Number(woData.ukuran_l);
+        newItems[index].sispot_l = Number(woData.ukuran_l);
+      }
+      if (woData.ukuran_t) {
+        newItems[index].hasil2_t = Number(woData.ukuran_t);
+      }
       const sisaQty = Number(woData.qty_cutting) - Number(woData.qty_terpenuhi);
-      newItems[index].hasil2_qty = sisaQty > 0 ? sisaQty : 0;
-
-      // Sispot auto-fill removed
+      newItems[index].hasil2_qty = sisaQty > 0 ? sisaQty : (Number(woData.qty_cutting) || 0);
     }
 
     setFormData(prev => ({ ...prev, carousel_items: newItems }));
@@ -509,17 +617,13 @@ const Realisasi = () => {
       const newItem = { ...emptyCarouselItem };
 
       if (lastItem) {
-        // Autofill P & L dari WO sebelumnya, T & Qty dikosongkan (manual input)
-        newItem.hasil2_p = lastItem.hasil2_p;
-        newItem.hasil2_l = lastItem.hasil2_l;
-        newItem.waste_kulit_p = lastItem.waste_kulit_p;
-        newItem.waste_kulit_l = lastItem.waste_kulit_l;
-        newItem.waste_potong_p = lastItem.waste_potong_p;
-        newItem.waste_potong_l = lastItem.waste_potong_l;
-        newItem.waste_produksi_p = lastItem.waste_produksi_p;
-        newItem.waste_produksi_l = lastItem.waste_produksi_l;
-        newItem.sispot_p = lastItem.sispot_p;
-        newItem.sispot_l = lastItem.sispot_l;
+        // Autofill P dari Sispot (karena Tambah WO hanya bisa diklik saat Hasil Utama habis)
+        // Lebar (L) dikosongkan karena sispot bisa ditidurkan jika L > sisa_l
+        newItem.hasil2_p = formData.sisa_p;
+        newItem.waste_kulit_p = formData.sisa_p;
+        newItem.waste_potong_p = formData.sisa_p;
+        newItem.waste_produksi_p = formData.sisa_p;
+        newItem.sispot_p = formData.sisa_p;
 
         // Mentor logic: Sispot hanya boleh ada di WO terakhir. Hapus Sispot di WO sebelumnya.
         newItems[lastIndex] = {
@@ -576,19 +680,49 @@ const Realisasi = () => {
     const submissionData = { ...formData, status: currentStatus };
 
     const errors = [];
+    const criticalErrors = []; // Errors that block even drafts
+
+    // Validasi Wajib Isi (Bagian 1) KHUSUS saat Submit
+    if (!isDraft) {
+      if (!formData.kualitas) errors.push("Bagian 1: Kualitas Busa wajib diisi.");
+      if (!formData.tanggal) errors.push("Bagian 1: Tanggal wajib diisi.");
+      if (!formData.no_spk) errors.push("Bagian 1: No SPK wajib diisi.");
+      if (!formData.nama_operator) errors.push("Bagian 1: Nama Operator wajib diisi.");
+      if (!formData.shift) errors.push("Bagian 1: Shift wajib diisi.");
+      if (!formData.grup) errors.push("Bagian 1: Grup wajib diisi.");
+      if (!formData.asal_p || !formData.asal_l || !formData.asal_t || !formData.asal_qty) {
+        errors.push("Bagian 1: Dimensi Balokan Asal (P, L, T, Qty) wajib diisi lengkap.");
+      }
+    }
 
     // Format Validation
     if (formData.no_barcode) {
-      if (formData.no_barcode.length !== 10) {
-        errors.push('Panjang Barcode harus tepat 10 karakter.');
-      } else if (!/^\d{6}/.test(formData.no_barcode)) {
-        errors.push('Barcode tidak boleh memiliki huruf pada 6 karakter pertama (karakter 1-6 harus angka).');
+      let finalBarcode = String(formData.no_barcode).trim();
+      if (formData.barcode_status === 'Abnormal' && formData.no_barcode_extra) {
+        finalBarcode += ` | ${String(formData.no_barcode_extra).trim()}`;
+      }
+      submissionData.no_barcode = finalBarcode;
+      
+      if (formData.barcode_status === 'Normal') {
+        const trimmedBarcode = String(formData.no_barcode).trim();
+        if (trimmedBarcode.length !== 10) {
+          criticalErrors.push(`Panjang Barcode harus tepat 10 karakter (terdeteksi ${trimmedBarcode.length} karakter).`);
+        } else if (!/^\d{6}/.test(trimmedBarcode)) {
+          criticalErrors.push('Barcode tidak boleh memiliki huruf pada 6 karakter pertama (karakter 1-6 harus angka).');
+        }
       }
     }
 
     formData.carousel_items.forEach((item, idx) => {
-      if (item.no_wo && !/^\d{7}$/.test(item.no_wo)) {
-        errors.push(`No WO pada baris ke-${idx + 1} harus berisi tepat 7 digit angka.`);
+      if (!item.no_wo && !item.keterangan) {
+        errors.push(`Item WO #${idx + 1}: Harus mengisi salah satu antara No WO atau Keterangan.`);
+      }
+      if (item.no_wo) {
+        if (/[a-zA-Z]/.test(item.no_wo)) {
+          criticalErrors.push(`Item WO #${idx + 1}: Jika huruf harus di isi ke keterangan bukan di No WO.`);
+        } else if (!/^\d{7}$/.test(item.no_wo)) {
+          errors.push(`Item WO #${idx + 1}: No WO harus berisi tepat 7 digit angka.`);
+        }
       }
     });
 
@@ -618,10 +752,18 @@ const Realisasi = () => {
       }
     }
 
+    if (criticalErrors.length > 0) {
+      setAlertModal({
+        show: true,
+        message: `Terdapat kesalahan format data yang harus diperbaiki sebelum disimpan (bahkan sebagai draft):\n\n- ` + criticalErrors.join('\n- ')
+      });
+      return;
+    }
+
     if (!isDraft && errors.length > 0) {
       setAlertModal({
         show: true,
-        message: `Terdapat ketidaksesuaian logika pemotongan:\n\n- ` + errors.join('\n- ') + `\n\n(Catatan: Sistem kini menggunakan validasi Volume/Kubikasi total, bukan penjumlahan panjang linear karena metode potong bisa bervariasi.)`
+        message: `Terdapat ketidaksesuaian data yang harus dilengkapi sebelum disubmit (Namun masih bisa disimpan sebagai draft):\n\n- ` + errors.join('\n- ') + `\n\n(Catatan: Sistem kini menggunakan validasi Volume/Kubikasi total, bukan penjumlahan panjang linear karena metode potong bisa bervariasi.)`
       });
       return;
     }
@@ -634,13 +776,7 @@ const Realisasi = () => {
         setAlertModal({ show: true, message: buckets.errorMessage });
         return;
       }
-      if (buckets.bucketA > 0.001 || buckets.bucketB > 0.001) {
-        setAlertModal({
-          show: true,
-          message: `Masih ada sisa ketinggian yang belum terpakai (Utama: ${buckets.bucketA.toFixed(1)} cm, Sispot: ${buckets.bucketB.toFixed(1)} cm). Sisa ketinggian harus habis terpakai dan dialokasikan sepenuhnya (ke Hasil, Waste, atau Sispot).`
-        });
-        return;
-      }
+      // Note: We intentionally allow leftovers (Utama & Sispot) to be saved for future use
     }
 
     // Attach source_block to each item before submission
@@ -658,8 +794,9 @@ const Realisasi = () => {
         await axios.post('http://localhost:5000/api/realisasi', submissionData);
         showNotification(isDraft ? 'Draft berhasil disimpan!' : 'Data realisasi berhasil disimpan!', 'success');
       }
-      setFormData(initialFormState);
+      setFormData(getInitialFormState());
       setEditId(null);
+      setWosByDate({}); // Clear WO cache so that the fulfilled WO disappears
       fetchActiveWOs(); // Refresh WO quantities
       if (editId) setActiveTab('table'); // Go back to table after edit
     } catch (error) {
@@ -689,17 +826,35 @@ const Realisasi = () => {
   };
 
   const handleEdit = (row) => {
+    let barcode_status = 'Normal';
+    let parsed_no_barcode = row.no_barcode || '';
+    let no_barcode_extra = '';
+    if (parsed_no_barcode.includes(' | ')) {
+      barcode_status = 'Abnormal';
+      const parts = parsed_no_barcode.split(' | ');
+      parsed_no_barcode = parts[0];
+      no_barcode_extra = parts[1] || '';
+    }
+
+    const formatDateLocal = (dateString) => {
+      if (!dateString) return '';
+      const d = new Date(dateString);
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    };
+
     const editedForm = {
-      kualitas: row.kualitas || '', no_barcode: row.no_barcode || '',
-      tanggal: new Date(row.tanggal).toISOString().split('T')[0],
+      kualitas: row.kualitas || '', barcode_status, no_barcode: parsed_no_barcode, no_barcode_extra,
+      tanggal: formatDateLocal(row.tanggal),
       no_spk: row.no_spk || '', nama_operator: row.nama_operator || '',
       shift: row.shift || 'Shift 1', grup: row.grup || 'Grup A',
       asal_p: formatNum(row.asal_p), asal_l: formatNum(row.asal_l), asal_t: formatNum(row.asal_t), asal_qty: row.asal_qty || '', keterangan_kondisi: row.keterangan_kondisi || '',
+      sisa_potong_id_used: row.sisa_potong_id_used || null,
 
       no_mesin: row.v_no_mesin || 'V1',
       hasil_p: formatNum(row.v_hasil_p), hasil_l: formatNum(row.v_hasil_l), hasil_t: formatNum(row.v_hasil_t), hasil_qty: row.v_hasil_qty || '',
       waste_samping_p: formatNum(row.waste_samping_p), waste_samping_l: formatNum(row.waste_samping_l), waste_samping_t: formatNum(row.waste_samping_t), waste_samping_qty: row.waste_samping_qty || '',
       waste_dpn_blk_p: formatNum(row.waste_dpn_blk_p), waste_dpn_blk_l: formatNum(row.waste_dpn_blk_l), waste_dpn_blk_t: formatNum(row.waste_dpn_blk_t), waste_dpn_blk_qty: row.waste_dpn_blk_qty || '',
+      waste_produksi_p: formatNum(row.waste_produksi_p), waste_produksi_l: formatNum(row.waste_produksi_l), waste_produksi_t: formatNum(row.waste_produksi_t), waste_produksi_qty: row.waste_produksi_qty || '',
       sisa_p: formatNum(row.sisa_p), sisa_l: formatNum(row.sisa_l), sisa_t: formatNum(row.sisa_t), sisa_qty: row.sisa_qty || '', sisa_keterangan: row.sisa_keterangan || '',
       dt_kode: row.dt_kode || '', dt_jam_awal: row.dt_jam_awal || '', dt_jam_akhir: row.dt_jam_akhir || '', dt_keterangan: row.dt_keterangan || '',
 
@@ -707,6 +862,7 @@ const Realisasi = () => {
         no_mesin: c.no_mesin || 'H1',
         tipe_mesin: c.tipe_mesin || 'Horizontal',
         no_disk: c.no_disk || '',
+        tanggal_wo: formatDateLocal(c.tanggal_wo),
         no_wo: c.no_wo || '',
         keterangan: c.keterangan || '',
         hasil2_p: formatNum(c.hasil2_p), hasil2_l: formatNum(c.hasil2_l), hasil2_t: formatNum(c.hasil2_t), hasil2_qty: c.hasil2_qty || '',
@@ -724,18 +880,24 @@ const Realisasi = () => {
     setActiveTab('input');
   };
 
-  const handleDelete = async (id) => {
-    if (window.confirm('Apakah Anda yakin ingin menghapus data realisasi ini? Aksi ini tidak dapat dibatalkan.')) {
-      try {
-        await axios.delete(`http://localhost:5000/api/realisasi/${id}`);
-        showNotification('Data realisasi berhasil dihapus!', 'success');
-        fetchData();
-        fetchActiveWOs();
-      } catch (error) {
-        console.error('Error deleting:', error);
-        showNotification('Gagal menghapus data', 'error');
+  const handleDelete = (id) => {
+    setConfirmModal({
+      show: true,
+      message: 'Apakah Anda yakin ingin menghapus data realisasi ini? Aksi ini tidak dapat dibatalkan.',
+      onConfirm: async () => {
+        try {
+          await axios.delete(`http://localhost:5000/api/realisasi/${id}`);
+          showNotification('Data realisasi berhasil dihapus!', 'success');
+          fetchData();
+          setWosByDate({}); // Clear WO cache
+          fetchActiveWOs();
+        } catch (error) {
+          console.error('Error deleting:', error);
+          showNotification('Gagal menghapus data', 'error');
+        }
+        setConfirmModal({ show: false, message: '', onConfirm: null });
       }
-    }
+    });
   };
 
   const showNotification = (message, type) => {
@@ -769,7 +931,7 @@ const Realisasi = () => {
     const { sisa_p, sisa_l, sisa_t, sisa_qty, sisa_keterangan } = formData;
     if (sisa_p === '' && sisa_l === '' && sisa_t === '' && sisa_qty === '') return inputClass;
 
-    if (sisa_p === 0 && sisa_l === 0 && sisa_t === 0 && sisa_qty === 0) {
+    if (Number(sisa_p) === 0 && Number(sisa_l) === 0 && Number(sisa_t) === 0 && Number(sisa_qty) === 0) {
       return `${inputClass} border-green-500 bg-green-50 text-green-700 font-bold focus:border-green-600 focus:ring-green-500 dark:bg-green-900/30 dark:border-green-500`;
     }
 
@@ -784,8 +946,13 @@ const Realisasi = () => {
 
   const getBucketsStatus = () => {
     let bucketA = Number(formData.hasil_t || 0) * Number(formData.hasil_qty || 1);
-    let bucketB = Number(formData.sisa_l || 0) * Number(formData.sisa_qty || 1);
-    let maxL_B = Number(formData.sisa_t || 0);
+    const initialBucketA = bucketA;
+    
+    let isSispotRotated = false;
+    let sispotInitialized = false;
+    let bucketB = 0;
+    let maxL_B = 0;
+    let initialBucketB = 0;
 
     const itemSources = [];
     let isError = false;
@@ -799,40 +966,67 @@ const Realisasi = () => {
         (Number(item.sispot_t || 0) * Number(item.sispot_qty || 1));
 
       let source = 'Utama';
-      if (bucketA >= t_needed - 0.001) {
+      const isUtamaExhausted = initialBucketA > 0 && bucketA <= 0.001;
+      
+      if (!isUtamaExhausted) {
+        source = 'Utama';
         bucketA -= t_needed;
-      } else if (bucketA <= 0.001 && bucketB > 0) {
-        bucketB -= t_needed;
+        if (bucketA < -0.001 && initialBucketA > 0) {
+          isError = true;
+          errorMessage = `Item WO #${idx + 1}: Ketinggian melebihi sisa Hasil Utama (${(bucketA + t_needed).toFixed(1)} cm). Harap paskan (habiskan) sisa ini sebelum menambah Sispot.`;
+        }
+      } else {
         source = 'Sispot';
+        
+        if (!sispotInitialized) {
+            sispotInitialized = true;
+            if (Number(item.hasil2_l || 0) > Number(formData.sisa_l || 0)) {
+                isSispotRotated = true;
+                bucketB = Number(formData.sisa_l || 0) * Number(formData.sisa_qty || 1);
+                maxL_B = Number(formData.sisa_t || 0);
+            } else {
+                isSispotRotated = false;
+                bucketB = Number(formData.sisa_t || 0) * Number(formData.sisa_qty || 1);
+                maxL_B = Number(formData.sisa_l || 0);
+            }
+            initialBucketB = bucketB;
+        }
+
+        bucketB -= t_needed;
         if (bucketB < -0.001) {
           isError = true;
           errorMessage = `Item WO #${idx + 1}: Ketinggian melebihi ketersediaan Sispot Vertikal.`;
         }
-        if (Number(item.hasil_l || 0) > maxL_B + 0.001) {
+        if (Number(item.hasil2_l || 0) > maxL_B + 0.001) {
           isError = true;
-          errorMessage = `Item WO #${idx + 1}: Lebar demand (${item.hasil_l}) melebihi tinggi Sispot (${maxL_B}) yang ditidurkan.`;
+          const statusRotated = isSispotRotated ? "yang ditidurkan" : "normal";
+          errorMessage = `Item WO #${idx + 1}: Lebar demand (${item.hasil2_l}) melebihi max lebar Sispot (${maxL_B}) (${statusRotated}).`;
         }
-      } else {
-        if (bucketA > 0.001) {
-          isError = true;
-          errorMessage = `Item WO #${idx + 1}: Ketinggian melebihi sisa Hasil Utama (${bucketA.toFixed(1)} cm). Harap paskan (habiskan) sisa ini sebelum mengambil Sispot.`;
-        } else {
-          isError = true;
-          errorMessage = `Item WO #${idx + 1}: Ketinggian melebihi sisa yang tersedia.`;
-        }
-        bucketA -= t_needed;
       }
       itemSources.push({ source, sisaUtama: bucketA, sisaSispot: bucketB });
     });
 
-    return { bucketA, bucketB, itemSources, isError, errorMessage, maxL_B };
+    if (!sispotInitialized) {
+        initialBucketB = Number(formData.sisa_t || 0) * Number(formData.sisa_qty || 1);
+        bucketB = initialBucketB;
+    }
+
+    return { bucketA, bucketB, itemSources, isError, errorMessage, maxL_B, initialBucketA, initialBucketB, isSispotRotated };
   };
   const buckets = getBucketsStatus();
   const isSisaZero = buckets.bucketA <= 0.001 && buckets.bucketB <= 0.001;
 
-  const getPLProps = (val, basePlaceholder, tVal) => {
-    const isTValEmpty = tVal === '' || tVal === null || tVal === undefined;
-    const forceZero = isTValEmpty && isSisaZero;
+
+
+  const getPLProps = (index, val, basePlaceholder, tVal) => {
+    const isTValEmpty = tVal === '' || tVal === null || tVal === undefined || Number(tVal) === 0;
+    const itemSourceInfo = buckets.itemSources[index];
+    const isSourceExhausted = itemSourceInfo 
+      ? (itemSourceInfo.source === 'Utama' 
+          ? (buckets.initialBucketA > 0 && itemSourceInfo.sisaUtama <= 0.001) 
+          : (buckets.initialBucketB > 0 && itemSourceInfo.sisaSispot <= 0.001))
+      : false;
+    const forceZero = isTValEmpty && isSourceExhausted;
 
     if (forceZero) {
       return {
@@ -849,9 +1043,15 @@ const Realisasi = () => {
     };
   };
 
-  const getTProps = (val) => {
-    const isValEmpty = val === '' || val === null || val === undefined;
-    const forceZero = isValEmpty && isSisaZero;
+  const getTProps = (index, val) => {
+    const isValEmpty = val === '' || val === null || val === undefined || Number(val) === 0;
+    const itemSourceInfo = buckets.itemSources[index];
+    const isSourceExhausted = itemSourceInfo 
+      ? (itemSourceInfo.source === 'Utama' 
+          ? (buckets.initialBucketA > 0 && itemSourceInfo.sisaUtama <= 0.001) 
+          : (buckets.initialBucketB > 0 && itemSourceInfo.sisaSispot <= 0.001))
+      : false;
+    const forceZero = isValEmpty && isSourceExhausted;
 
     if (forceZero) {
       return {
@@ -869,10 +1069,16 @@ const Realisasi = () => {
     };
   };
 
-  const getQtyProps = (tVal, qtyVal) => {
-    const isQtyEmpty = qtyVal === '' || qtyVal === null || qtyVal === undefined;
-    const isTValEmpty = tVal === '' || tVal === null || tVal === undefined;
-    const forceZero = isTValEmpty && isSisaZero;
+  const getQtyProps = (index, tVal, qtyVal) => {
+    const isQtyEmpty = qtyVal === '' || qtyVal === null || qtyVal === undefined || Number(qtyVal) === 0;
+    const isTValEmpty = tVal === '' || tVal === null || tVal === undefined || Number(tVal) === 0;
+    const itemSourceInfo = buckets.itemSources[index];
+    const isSourceExhausted = itemSourceInfo 
+      ? (itemSourceInfo.source === 'Utama' 
+          ? (buckets.initialBucketA > 0 && itemSourceInfo.sisaUtama <= 0.001) 
+          : (buckets.initialBucketB > 0 && itemSourceInfo.sisaSispot <= 0.001))
+      : false;
+    const forceZero = isTValEmpty && isSourceExhausted;
 
     if (forceZero) {
       return {
@@ -895,6 +1101,14 @@ const Realisasi = () => {
   };
 
   const hasSisaPotong = Number(formData.sisa_p || 0) > 0 || Number(formData.sisa_l || 0) > 0 || Number(formData.sisa_t || 0) > 0 || Number(formData.sisa_qty || 0) > 0;
+  
+  const isTambahWoDisabled = !hasSisaPotong || buckets.bucketA > 0.001 || isSisaZero;
+  const getTambahWoTooltip = () => {
+    if (!hasSisaPotong) return "Tidak bisa menambah WO karena tidak ada Sisa Potongan dari proses Vertikal.";
+    if (buckets.bucketA > 0.001) return "Dimensi Hasil Utama Vertikal harus dipakai habis terlebih dahulu sebelum menambah WO.";
+    if (isSisaZero) return "Semua ketersediaan dimensi tinggi (Utama & Sispot) sudah dipakai habis.";
+    return "Tambah WO";
+  };
   const hasUkuranAsal = Number(formData.asal_p || 0) > 0 || Number(formData.asal_l || 0) > 0 || Number(formData.asal_t || 0) > 0 || Number(formData.asal_qty || 0) > 0;
   const isSisaKeteranganEmpty = !formData.sisa_keterangan || formData.sisa_keterangan.trim() === '';
   const isKondisiBusaEmpty = !formData.keterangan_kondisi || formData.keterangan_kondisi.trim() === '';
@@ -911,6 +1125,44 @@ const Realisasi = () => {
 
   return (
     <div className="flex flex-col gap-6 animate-in fade-in duration-300 relative">
+
+      {showSispotModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className={`relative w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200 ${prefs.darkMode ? 'bg-[#1e293b] text-white' : 'bg-white text-gray-800'}`}>
+            <div className={`p-4 border-b flex justify-between items-center ${prefs.darkMode ? 'border-slate-700' : 'border-gray-200'}`}>
+              <h3 className="font-bold text-lg flex items-center gap-2 text-accent-blue">
+                <AlertCircle size={20} />
+                Sisa Potong Tersedia
+              </h3>
+              <button onClick={() => setShowSispotModal(false)} className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors">
+                <X size={20} />
+              </button>
+            </div>
+            <div className="p-4 space-y-3 max-h-[60vh] overflow-y-auto custom-scrollbar">
+              <p className="text-sm opacity-80 mb-2">Barcode ini memiliki sisa potong sebelumnya. Pilih kepingan yang ingin Anda gunakan:</p>
+              
+              {availableSispots.map(sp => (
+                <button 
+                  key={sp.id}
+                  onClick={() => handleSelectSispot(sp)}
+                  className={`w-full text-left p-4 rounded-xl border-2 transition-all hover:-translate-y-0.5 ${prefs.darkMode ? 'border-blue-900/50 hover:border-blue-500 bg-blue-900/20' : 'border-blue-100 hover:border-blue-400 bg-blue-50'}`}
+                >
+                  <div className="flex justify-between items-center mb-1">
+                    <span className="font-bold text-accent-blue">Sisa {sp.sumber_potong}</span>
+                    <span className="text-xs px-2 py-1 bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400 rounded-md font-semibold">
+                      {calculateAging(sp.created_at)}
+                    </span>
+                  </div>
+                  <div className="font-mono font-bold text-lg">
+                    {sp.p} x {sp.l} x {sp.t} <span className="text-sm">({sp.qty} pcs)</span>
+                  </div>
+                  {sp.kualitas && <div className="text-xs mt-1 opacity-70">Kualitas: {sp.kualitas}</div>}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       {showScanner && (
         <DocumentScannerModal
@@ -931,10 +1183,10 @@ const Realisasi = () => {
           </p>
         </div>
         <div className="flex gap-2 p-1 bg-white/10 rounded-lg">
-          <button onClick={() => { setActiveTab('input'); if (activeTab !== 'input' && !editId) setFormData(initialFormState); }} className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-semibold transition-all ${activeTab === 'input' ? 'bg-accent-blue text-navy-dark shadow' : 'text-gray-300 hover:text-white hover:bg-white/5'}`}>
+          <button onClick={() => { setActiveTab('input'); if (activeTab !== 'input' && !editId) setFormData(getInitialFormState()); }} className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-semibold transition-all ${activeTab === 'input' ? 'bg-accent-blue text-navy-dark shadow' : 'text-gray-300 hover:text-white hover:bg-white/5'}`}>
             <PlusCircle size={16} /> Form Input
           </button>
-          <button onClick={() => { setActiveTab('table'); setEditId(null); setFormData(initialFormState); }} className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-semibold transition-all ${activeTab === 'table' ? 'bg-accent-blue text-navy-dark shadow' : 'text-gray-300 hover:text-white hover:bg-white/5'}`}>
+          <button onClick={() => { setActiveTab('table'); setEditId(null); setFormData(getInitialFormState()); }} className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-semibold transition-all ${activeTab === 'table' ? 'bg-accent-blue text-navy-dark shadow' : 'text-gray-300 hover:text-white hover:bg-white/5'}`}>
             <List size={16} /> Data Tabel
           </button>
           {activeTab === 'table' && (
@@ -963,22 +1215,60 @@ const Realisasi = () => {
                 <ScanLine size={16} /> Scan Dokumen Fisik
               </button>
             </div>
-            <div className="p-6 grid grid-cols-1 md:grid-cols-4 gap-6">
-              <div><label className={labelClass}>Kualitas</label><input required type="text" name="kualitas" value={formData.kualitas} onChange={handleChange} className={inputClass} placeholder="Contoh: LBR R 100" /></div>
+            <div className="p-6 grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-6">
               <div>
-                <label className={labelClass}>No Barcode</label>
+                <label className={labelClass}>Kualitas</label>
+                <input 
+                  required 
+                  type="text" 
+                  name="kualitas" 
+                  value={formData.kualitas} 
+                  onChange={handleChange} 
+                  className={inputClass} 
+                  placeholder="Contoh: LBR R 100" 
+                  readOnly={!!formData.sisa_potong_id_used}
+                />
+              </div>
+              <div>
+                <label className={labelClass}>Status Barcode</label>
+                <select 
+                  name="barcode_status" 
+                  value={formData.barcode_status} 
+                  onChange={handleChange} 
+                  className={inputClass}
+                >
+                  <option value="Normal">Normal</option>
+                  <option value="Abnormal">Abnormal</option>
+                </select>
+              </div>
+              <div>
+                <label className={labelClass}>No Barcode {formData.barcode_status === 'Abnormal' ? 'Utama' : ''}</label>
                 <input 
                   required 
                   type="text" 
                   name="no_barcode" 
                   value={formData.no_barcode} 
                   onChange={handleChange} 
-                  className={`${inputClass} ${formData.no_barcode && formData.no_barcode.length > 10 ? 'border-red-500 focus:ring-red-500 bg-red-50 dark:bg-red-900/20' : ''}`} 
+                  className={`${inputClass} ${formData.barcode_status === 'Normal' && formData.no_barcode && formData.no_barcode.length > 10 ? 'border-red-500 focus:ring-red-500 bg-red-50 dark:bg-red-900/20' : ''}`} 
                 />
-                {formData.no_barcode && formData.no_barcode.length > 10 && (
+                {formData.barcode_status === 'Normal' && formData.no_barcode && formData.no_barcode.length > 10 && (
                   <span className="text-red-500 text-xs mt-1 block font-medium">Warning: Barcode tidak boleh lebih dari 10 digit.</span>
                 )}
               </div>
+              {formData.barcode_status === 'Abnormal' && (
+                <div>
+                  <label className={labelClass}>No Barcode Ekstra</label>
+                  <input 
+                    required 
+                    type="text" 
+                    name="no_barcode_extra" 
+                    value={formData.no_barcode_extra} 
+                    onChange={handleChange} 
+                    className={inputClass} 
+                    placeholder="Barcode tambahan..."
+                  />
+                </div>
+              )}
               <div><label className={labelClass}>Tanggal</label><input required type="date" name="tanggal" value={formData.tanggal} onChange={handleChange} className={inputClass} /></div>
               <div><label className={labelClass}>No SPK</label><input required type="text" name="no_spk" value={formData.no_spk} onChange={handleChange} className={inputClass} /></div>
 
@@ -1088,6 +1378,16 @@ const Realisasi = () => {
               </div>
 
               <div className="col-span-1 lg:col-span-2">
+                <label className={labelClass}>Waste Produksi (P x L x T x Qty)</label>
+                <div className="grid grid-cols-4 gap-2">
+                  <input type="number" step="any" name="waste_produksi_p" value={formData.waste_produksi_p} onChange={handleChange} placeholder="P" className={inputClass} />
+                  <input type="number" step="any" name="waste_produksi_l" value={formData.waste_produksi_l} onChange={handleChange} placeholder="L" className={inputClass} />
+                  <input type="number" step="any" name="waste_produksi_t" value={formData.waste_produksi_t} onChange={handleChange} placeholder="T" className={inputClass} />
+                  <input type="number" name="waste_produksi_qty" value={formData.waste_produksi_qty} onChange={handleChange} placeholder="Qty" className={inputClass} />
+                </div>
+              </div>
+
+              <div className="col-span-1 lg:col-span-2">
                 <label className={labelClass}>Sisa Potongan (P x L x T x Qty)</label>
                 <div className="grid grid-cols-4 gap-2">
                   <input type="number" step="any" name="sisa_p" value={formData.sisa_p} onChange={handleChange} placeholder="P" className={sisaColorClass} />
@@ -1167,7 +1467,7 @@ const Realisasi = () => {
                               ? (prefs.darkMode ? 'bg-blue-900/30 text-blue-400 border-blue-800' : 'bg-blue-100 text-blue-700 border-blue-200')
                               : (prefs.darkMode ? 'bg-red-900/30 text-red-400 border-red-800' : 'bg-red-100 text-red-700 border-red-200')
                           }`}>
-                          Sisa Tinggi: {sisaTinggi.toFixed(1)} cm
+                          Sisa Tinggi: {Number(sisaTinggi).toLocaleString('id-ID', { maximumFractionDigits: 2 })} cm
                         </span>
                       </h4>
                       <div className="flex flex-wrap gap-2 text-xs text-gray-500 dark:text-gray-400 mt-2 md:mt-0 pr-8">
@@ -1220,7 +1520,7 @@ const Realisasi = () => {
                     </div>
 
                     <div 
-                      className="col-span-1 lg:col-span-3 relative" 
+                      className={`col-span-1 ${item.tipe_mesin === 'Carousel' ? 'lg:col-span-4' : 'lg:col-span-3'} relative`} 
                       onBlur={(e) => {
                         if (!e.currentTarget.contains(e.relatedTarget)) {
                           setFocusedWoIndex(null);
@@ -1234,16 +1534,19 @@ const Realisasi = () => {
                         onChange={(e) => handleWoSelect(index, e.target.value)}
                         onFocus={() => {
                           setFocusedWoIndex(index);
-                          if (item.tanggal_wo) fetchActiveWOs(item.tanggal_wo);
+                          if (item.tanggal_wo) fetchActiveWOs(item.tanggal_wo, true);
                         }}
-                        className={`${inputClass} ${item.no_wo && item.no_wo.length > 7 ? 'border-red-500 focus:ring-red-500 bg-red-50 dark:bg-red-900/20' : ''}`}
+                        className={`${inputClass} ${(item.no_wo && item.no_wo.length > 7) || (item.no_wo && /[a-zA-Z]/.test(item.no_wo)) ? 'border-red-500 focus:ring-red-500 bg-red-50 dark:bg-red-900/20' : ''}`}
                         placeholder="Ketik & Pilih WO..."
                         autoComplete="off"
                       />
-                      {item.no_wo && item.no_wo.length > 7 && (
+                      {item.no_wo && item.no_wo.length > 7 && !/[a-zA-Z]/.test(item.no_wo) && (
                         <span className="text-red-500 text-xs mt-1 block font-medium">Warning: No WO tidak boleh lebih dari 7 digit.</span>
                       )}
-                      {focusedWoIndex === index && (
+                      {item.no_wo && /[a-zA-Z]/.test(item.no_wo) && (
+                        <span className="text-red-500 text-xs mt-1 block font-medium">Warning: Jika huruf harus di isi ke Keterangan, bukan di No WO.</span>
+                      )}
+                      {focusedWoIndex === index && item.tanggal_wo && (
                         <div className="absolute z-50 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-y-auto">
                           {getAvailableWOs(index)
                             .filter(wo => wo.no_wo.toLowerCase().includes((item.no_wo || '').toLowerCase()))
@@ -1257,7 +1560,12 @@ const Realisasi = () => {
                                 setFocusedWoIndex(null);
                               }}
                             >
-                              {wo.no_wo}
+                              <div className="flex justify-between items-center gap-2">
+                                <span className="font-bold text-navy-dark">{wo.no_wo}</span>
+                                <span className="text-xs text-gray-500 font-normal">
+                                  {wo.ukuran_p ? `${Number(wo.ukuran_p)}x${Number(wo.ukuran_l)}x${Number(wo.ukuran_t)}` : (wo.ukuran_t ? `T:${Number(wo.ukuran_t)}` : '')} (Qty: {wo.qty_cutting})
+                                </span>
+                              </div>
                             </div>
                           ))}
                           {getAvailableWOs(index).filter(wo => wo.no_wo.toLowerCase().includes((item.no_wo || '').toLowerCase())).length === 0 && (
@@ -1267,9 +1575,9 @@ const Realisasi = () => {
                       )}
                     </div>
 
-                    <div className="col-span-1 lg:col-span-3">
-                      <label className={labelClass}>Keterangan</label>
-                      <input type="text" name="keterangan" value={item.keterangan} onChange={(e) => handleCarouselChange(index, e)} placeholder="Isi ket jika WO tidak ada di daftar..." className={inputClass} />
+                    <div className={`col-span-1 ${item.tipe_mesin === 'Carousel' ? 'lg:col-span-8' : 'lg:col-span-3'}`}>
+                      <label className={labelClass}>{item.tipe_mesin === 'Carousel' ? 'Keterangan Tambahan WO' : 'Keterangan'}</label>
+                      <input type="text" name="keterangan" value={item.keterangan} onChange={(e) => handleCarouselChange(index, e)} placeholder={item.tipe_mesin === 'Carousel' ? "Isi ket jika WO tidak ada di daftar atau perlu catatan..." : "Isi ket jika WO tidak ada di daftar..."} className={inputClass} />
                     </div>
 
                     <div className="col-span-1 lg:col-span-4">
@@ -1298,30 +1606,30 @@ const Realisasi = () => {
                     <div className="col-span-1 lg:col-span-6">
                       <label className={labelClass}>Waste Kulit (P x L x T x Qty)</label>
                       <div className="grid grid-cols-4 gap-2">
-                        <input type="number" step="any" name="waste_kulit_p" value={item.waste_kulit_p} onChange={(e) => handleCarouselChange(index, e)} {...getPLProps(item.waste_kulit_p, 'P', item.waste_kulit_t)} />
-                        <input type="number" step="any" name="waste_kulit_l" value={item.waste_kulit_l} onChange={(e) => handleCarouselChange(index, e)} {...getPLProps(item.waste_kulit_l, 'L', item.waste_kulit_t)} />
-                        <input type="number" step="any" name="waste_kulit_t" value={item.waste_kulit_t} onChange={(e) => handleCarouselChange(index, e)} {...getTProps(item.waste_kulit_t)} />
-                        <input type="number" name="waste_kulit_qty" value={item.waste_kulit_qty} onChange={(e) => handleCarouselChange(index, e)} {...getQtyProps(item.waste_kulit_t, item.waste_kulit_qty)} />
+                        <input type="number" step="any" name="waste_kulit_p" value={item.waste_kulit_p} onChange={(e) => handleCarouselChange(index, e)} {...getPLProps(index, item.waste_kulit_p, 'P', item.waste_kulit_t)} />
+                        <input type="number" step="any" name="waste_kulit_l" value={item.waste_kulit_l} onChange={(e) => handleCarouselChange(index, e)} {...getPLProps(index, item.waste_kulit_l, 'L', item.waste_kulit_t)} />
+                        <input type="number" step="any" name="waste_kulit_t" value={item.waste_kulit_t} onChange={(e) => handleCarouselChange(index, e)} {...getTProps(index, item.waste_kulit_t)} />
+                        <input type="number" name="waste_kulit_qty" value={item.waste_kulit_qty} onChange={(e) => handleCarouselChange(index, e)} {...getQtyProps(index, item.waste_kulit_t, item.waste_kulit_qty)} />
                       </div>
                     </div>
 
                     <div className="col-span-1 lg:col-span-6">
                       <label className={labelClass}>Waste Potong (P x L x T x Qty)</label>
                       <div className="grid grid-cols-4 gap-2">
-                        <input type="number" step="any" name="waste_potong_p" value={item.waste_potong_p} onChange={(e) => handleCarouselChange(index, e)} {...getPLProps(item.waste_potong_p, 'P', item.waste_potong_t)} />
-                        <input type="number" step="any" name="waste_potong_l" value={item.waste_potong_l} onChange={(e) => handleCarouselChange(index, e)} {...getPLProps(item.waste_potong_l, 'L', item.waste_potong_t)} />
-                        <input type="number" step="any" name="waste_potong_t" value={item.waste_potong_t} onChange={(e) => handleCarouselChange(index, e)} {...getTProps(item.waste_potong_t)} />
-                        <input type="number" name="waste_potong_qty" value={item.waste_potong_qty} onChange={(e) => handleCarouselChange(index, e)} {...getQtyProps(item.waste_potong_t, item.waste_potong_qty)} />
+                        <input type="number" step="any" name="waste_potong_p" value={item.waste_potong_p} onChange={(e) => handleCarouselChange(index, e)} {...getPLProps(index, item.waste_potong_p, 'P', item.waste_potong_t)} />
+                        <input type="number" step="any" name="waste_potong_l" value={item.waste_potong_l} onChange={(e) => handleCarouselChange(index, e)} {...getPLProps(index, item.waste_potong_l, 'L', item.waste_potong_t)} />
+                        <input type="number" step="any" name="waste_potong_t" value={item.waste_potong_t} onChange={(e) => handleCarouselChange(index, e)} {...getTProps(index, item.waste_potong_t)} />
+                        <input type="number" name="waste_potong_qty" value={item.waste_potong_qty} onChange={(e) => handleCarouselChange(index, e)} {...getQtyProps(index, item.waste_potong_t, item.waste_potong_qty)} />
                       </div>
                     </div>
 
                     <div className="col-span-1 lg:col-span-6">
                       <label className={labelClass}>Waste Produksi & Keterangan</label>
                       <div className="grid grid-cols-4 gap-2">
-                        <input type="number" step="any" name="waste_produksi_p" value={item.waste_produksi_p} onChange={(e) => handleCarouselChange(index, e)} {...getPLProps(item.waste_produksi_p, 'P', item.waste_produksi_t)} />
-                        <input type="number" step="any" name="waste_produksi_l" value={item.waste_produksi_l} onChange={(e) => handleCarouselChange(index, e)} {...getPLProps(item.waste_produksi_l, 'L', item.waste_produksi_t)} />
-                        <input type="number" step="any" name="waste_produksi_t" value={item.waste_produksi_t} onChange={(e) => handleCarouselChange(index, e)} {...getTProps(item.waste_produksi_t)} />
-                        <input type="number" name="waste_produksi_qty" value={item.waste_produksi_qty} onChange={(e) => handleCarouselChange(index, e)} {...getQtyProps(item.waste_produksi_t, item.waste_produksi_qty)} />
+                        <input type="number" step="any" name="waste_produksi_p" value={item.waste_produksi_p} onChange={(e) => handleCarouselChange(index, e)} {...getPLProps(index, item.waste_produksi_p, 'P', item.waste_produksi_t)} />
+                        <input type="number" step="any" name="waste_produksi_l" value={item.waste_produksi_l} onChange={(e) => handleCarouselChange(index, e)} {...getPLProps(index, item.waste_produksi_l, 'L', item.waste_produksi_t)} />
+                        <input type="number" step="any" name="waste_produksi_t" value={item.waste_produksi_t} onChange={(e) => handleCarouselChange(index, e)} {...getTProps(index, item.waste_produksi_t)} />
+                        <input type="number" name="waste_produksi_qty" value={item.waste_produksi_qty} onChange={(e) => handleCarouselChange(index, e)} {...getQtyProps(index, item.waste_produksi_t, item.waste_produksi_qty)} />
                         <input type="text" name="waste_produksi_keterangan" value={item.waste_produksi_keterangan} onChange={(e) => handleCarouselChange(index, e)} placeholder="Keterangan..." className={`${inputClass} col-span-4`} />
                       </div>
                     </div>
@@ -1334,10 +1642,10 @@ const Realisasi = () => {
                         )}
                       </label>
                       <div className={`grid grid-cols-4 gap-2 ${index !== formData.carousel_items.length - 1 ? 'opacity-50 pointer-events-none' : ''}`}>
-                        <input type="number" step="any" name="sispot_p" value={item.sispot_p} onChange={(e) => handleCarouselChange(index, e)} disabled={index !== formData.carousel_items.length - 1} {...getPLProps(item.sispot_p, 'P', item.sispot_t)} />
-                        <input type="number" step="any" name="sispot_l" value={item.sispot_l} onChange={(e) => handleCarouselChange(index, e)} disabled={index !== formData.carousel_items.length - 1} {...getPLProps(item.sispot_l, 'L', item.sispot_t)} />
-                        <input type="number" step="any" name="sispot_t" value={item.sispot_t} onChange={(e) => handleCarouselChange(index, e)} disabled={index !== formData.carousel_items.length - 1} {...getTProps(item.sispot_t)} />
-                        <input type="number" name="sispot_qty" value={item.sispot_qty} onChange={(e) => handleCarouselChange(index, e)} disabled={index !== formData.carousel_items.length - 1} {...getQtyProps(item.sispot_t, item.sispot_qty)} />
+                        <input type="number" step="any" name="sispot_p" value={item.sispot_p} onChange={(e) => handleCarouselChange(index, e)} disabled={index !== formData.carousel_items.length - 1} {...getPLProps(index, item.sispot_p, 'P', item.sispot_t)} />
+                        <input type="number" step="any" name="sispot_l" value={item.sispot_l} onChange={(e) => handleCarouselChange(index, e)} disabled={index !== formData.carousel_items.length - 1} {...getPLProps(index, item.sispot_l, 'L', item.sispot_t)} />
+                        <input type="number" step="any" name="sispot_t" value={item.sispot_t} onChange={(e) => handleCarouselChange(index, e)} disabled={index !== formData.carousel_items.length - 1} {...getTProps(index, item.sispot_t)} />
+                        <input type="number" name="sispot_qty" value={item.sispot_qty} onChange={(e) => handleCarouselChange(index, e)} disabled={index !== formData.carousel_items.length - 1} {...getQtyProps(index, item.sispot_t, item.sispot_qty)} />
                         <input type="text" name="sispot_keterangan" value={item.sispot_keterangan} onChange={(e) => handleCarouselChange(index, e)} disabled={index !== formData.carousel_items.length - 1} placeholder="Keterangan..." className={`${inputClass} col-span-4`} />
                       </div>
                     </div>
@@ -1362,7 +1670,17 @@ const Realisasi = () => {
 
                     {index === formData.carousel_items.length - 1 && (
                       <div className="col-span-1 lg:col-span-12 flex justify-end mt-4 border-t pt-4 border-gray-100 dark:border-slate-700">
-                        <button type="button" onClick={addWO} className="flex items-center justify-center gap-1 text-xs px-4 py-2 bg-accent-blue text-navy-dark font-bold rounded hover:bg-opacity-80 transition-colors shadow-sm">
+                        <button 
+                          type="button" 
+                          onClick={addWO} 
+                          disabled={isTambahWoDisabled}
+                          title={getTambahWoTooltip()}
+                          className={`flex items-center justify-center gap-1 text-xs px-4 py-2 font-bold rounded shadow-sm transition-colors ${
+                            isTambahWoDisabled 
+                              ? 'bg-gray-200 text-gray-500 cursor-not-allowed dark:bg-slate-700 dark:text-gray-400' 
+                              : 'bg-accent-blue text-navy-dark hover:bg-opacity-80'
+                          }`}
+                        >
                           <Plus size={14} /> Tambah WO
                         </button>
                       </div>
@@ -1380,7 +1698,7 @@ const Realisasi = () => {
                 type="button"
                 onClick={() => {
                   setEditId(null);
-                  setFormData(initialFormState);
+                  setFormData(getInitialFormState());
                   setActiveTab('table');
                 }}
                 className="px-6 py-3 font-semibold text-gray-500 hover:bg-gray-100 rounded-lg transition-colors dark:hover:bg-slate-700 dark:text-gray-400"
@@ -1548,6 +1866,7 @@ const Realisasi = () => {
                     <div><span className="block text-gray-500 text-xs">Sisa Potong (PxLxTxQty)</span>{renderDim(selectedDetail.sisa_p, selectedDetail.sisa_l, selectedDetail.sisa_t, selectedDetail.sisa_qty, selectedDetail.sisa_keterangan)}</div>
                     <div><span className="block text-gray-500 text-xs">Waste Samping Kiri Kanan (PxLxTxQty)</span>{renderDim(selectedDetail.waste_samping_p, selectedDetail.waste_samping_l, selectedDetail.waste_samping_t, selectedDetail.waste_samping_qty)}</div>
                     <div><span className="block text-gray-500 text-xs">Waste Depan Belakang (PxLxTxQty)</span>{renderDim(selectedDetail.waste_dpn_blk_p, selectedDetail.waste_dpn_blk_l, selectedDetail.waste_dpn_blk_t, selectedDetail.waste_dpn_blk_qty)}</div>
+                    <div><span className="block text-gray-500 text-xs">Waste Produksi (PxLxTxQty)</span>{renderDim(selectedDetail.waste_produksi_p, selectedDetail.waste_produksi_l, selectedDetail.waste_produksi_t, selectedDetail.waste_produksi_qty)}</div>
                     <div className="col-span-2"><span className="block text-gray-500 text-xs">Downtime</span><span className="font-bold">{selectedDetail.dt_kode ? `${selectedDetail.dt_kode} (${selectedDetail.dt_jam_awal} - ${selectedDetail.dt_jam_akhir})` : '-'}</span></div>
                   </div>
                 </div>
@@ -1570,7 +1889,7 @@ const Realisasi = () => {
                         <div className="grid grid-cols-2 md:grid-cols-5 gap-4 text-sm mt-3">
                           <div><span className="block text-gray-500 text-xs">Mesin</span><span className="font-bold">{item.tipe_mesin} ({item.no_mesin})</span></div>
                           {item.tipe_mesin === 'Carousel' && <div><span className="block text-gray-500 text-xs">No Disk</span><span className="font-bold">{item.no_disk || '-'}</span></div>}
-                          <div><span className="block text-gray-500 text-xs">Hasil (PxLxTxQty)</span>{renderDim(item.hasil_p, item.hasil_l, item.hasil_t, item.hasil_qty)}</div>
+                          <div><span className="block text-gray-500 text-xs">Hasil (PxLxTxQty)</span>{renderDim(item.hasil2_p, item.hasil2_l, item.hasil2_t, item.hasil2_qty)}</div>
                           <div><span className="block text-gray-500 text-xs">Waste Kulit (PxLxTxQty)</span>{renderDim(item.waste_kulit_p, item.waste_kulit_l, item.waste_kulit_t, item.waste_kulit_qty)}</div>
                           <div><span className="block text-gray-500 text-xs">Waste Potong (PxLxTxQty)</span>{renderDim(item.waste_potong_p, item.waste_potong_l, item.waste_potong_t, item.waste_potong_qty)}</div>
                           <div><span className="block text-gray-500 text-xs">Waste Produksi (PxLxTxQty)</span>{renderDim(item.waste_produksi_p, item.waste_produksi_l, item.waste_produksi_t, item.waste_produksi_qty, item.waste_produksi_keterangan)}</div>
@@ -1610,6 +1929,36 @@ const Realisasi = () => {
                 className="px-6 py-2 bg-red-500 text-white font-bold rounded-lg hover:bg-red-600 transition-colors shadow-sm"
               >
                 Oke, Saya Mengerti
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* CUSTOM CONFIRM MODAL */}
+      {confirmModal.show && (
+        <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in">
+          <div className={`w-full max-w-md rounded-2xl shadow-2xl p-6 flex flex-col gap-4 ${prefs.darkMode ? 'bg-slate-900 text-white' : 'bg-white'}`}>
+            <h3 className="text-xl font-bold text-red-500 flex items-center gap-2 border-b border-red-100 pb-3">
+              <span className="flex items-center justify-center w-8 h-8 rounded-full bg-red-100 text-red-600">
+                <Trash2 size={16} />
+              </span>
+              Konfirmasi Hapus
+            </h3>
+            <div className={`text-sm whitespace-pre-line ${prefs.darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+              {confirmModal.message}
+            </div>
+            <div className="flex justify-end gap-3 mt-4">
+              <button
+                onClick={() => setConfirmModal({ show: false, message: '', onConfirm: null })}
+                className={`px-4 py-2 font-bold rounded-lg transition-colors ${prefs.darkMode ? 'bg-slate-800 text-gray-300 hover:bg-slate-700' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+              >
+                Batal
+              </button>
+              <button
+                onClick={confirmModal.onConfirm}
+                className="px-6 py-2 bg-red-500 text-white font-bold rounded-lg hover:bg-red-600 transition-colors shadow-sm"
+              >
+                Ya, Hapus Data
               </button>
             </div>
           </div>

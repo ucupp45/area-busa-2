@@ -213,6 +213,7 @@ async function matchAndCalculate(rawRows) {
         if (!groupedMap.has(key)) {
             groupedMap.set(key, {
                 woCustPairs: new Map(),
+                woDetails: [],
                 cleanItemNoSpace: row.cleanItemNoSpace,
                 item: row.item, // Akan menampilkan deskripsi dari baris pertama
                 p: row.p,
@@ -231,6 +232,7 @@ async function matchAndCalculate(rawRows) {
         const currentWo = row.noWo || row['WO Number'] || row['No WO'] || '-';
         const currentCust = row.customer || '-';
         group.woCustPairs.set(currentWo, currentCust);
+        group.woDetails.push({ wo: currentWo, customer: currentCust, qty_cutting: row.qtyCut || row.actualQty || 0 });
 
         group.totalQty += row.actualQty;
         group.totalQtyCut += (row.qtyCut || 0);
@@ -341,6 +343,7 @@ async function matchAndCalculate(rawRows) {
 
         parsedData.push({
             noWo: joinedWos.join(', '),
+            woDetails: JSON.stringify(group.woDetails),
             customer: joinedCustomers.join(', '),
             item: group.item,
             qty: group.totalQty,
@@ -407,6 +410,80 @@ exports.getCT = async (req, res) => {
     } catch (error) {
         console.error('[ERROR] getCT:', error);
         res.status(500).json({ ct: 0 });
+    }
+};
+
+// ============================================================
+// CONTROLLER: PREVIEW RAW DATA (Copas dari Excel)
+// ============================================================
+exports.previewRaw = async (req, res) => {
+    try {
+        const { rawRows } = req.body;
+        if (!rawRows || !Array.isArray(rawRows)) {
+            return res.status(400).json({ message: 'Data row tidak valid.' });
+        }
+
+        const [manpowerRows] = await db.query('SELECT * FROM mesin_manpower');
+        const manpowerMap = {};
+        for (const row of manpowerRows) {
+            manpowerMap[row.tipe_mesin] = row;
+        }
+
+        const { parsedData, totalEstimasiWaktu, summaryPerMesin } = await matchAndCalculate(rawRows);
+
+        const kapasitasPerMesin = 420;
+
+        for (const [machineType, data] of Object.entries(summaryPerMesin)) {
+            let maxCapacity = 1;
+            let manpowerPerMachine = 1;
+
+            if (manpowerMap[machineType]) {
+                maxCapacity = manpowerMap[machineType].total_mesin;
+                manpowerPerMachine = manpowerMap[machineType].manpower_per_mesin;
+            } else if (machineType === 'CNC' || machineType === 'Perforasi') {
+                maxCapacity = 1;
+                manpowerPerMachine = 2;
+            }
+
+            let reqMachines = Math.ceil(data.totalWaktu / kapasitasPerMesin);
+            if (reqMachines > maxCapacity) reqMachines = maxCapacity;
+
+            if ((machineType === 'CNC' || machineType === 'Perforasi') && data.totalQty > 0) {
+                reqMachines = 1;
+            }
+
+            let reqManpower = reqMachines * manpowerPerMachine;
+
+            const utilisasi = reqMachines > 0
+                ? (data.totalWaktu / (reqMachines * kapasitasPerMesin)) * 100
+                : 0;
+
+            let status = 'Efisien';
+            if (utilisasi < 50) status = 'Tidak Efisien';
+            else if (utilisasi < 80) status = 'Cukup';
+
+            if ((machineType === 'CNC' || machineType === 'Perforasi') && data.totalQty > 0) {
+                status = 'Menunggu CT';
+            }
+
+            summaryPerMesin[machineType] = {
+                ...data,
+                mesinDibutuhkan: reqMachines,
+                manpowerDibutuhkan: reqManpower,
+                persentaseUtilisasi: Number(utilisasi.toFixed(2)),
+                utilisasiStatus: status
+            };
+        }
+
+        res.json({
+            parsedData,
+            summaryPerMesin,
+            totalEstimasiWaktu
+        });
+
+    } catch (error) {
+        console.error('[ERROR] previewRaw:', error);
+        res.status(500).json({ message: 'Terjadi kesalahan saat memproses data paste', error: error.message });
     }
 };
 
@@ -591,11 +668,13 @@ exports.saveSPK = async (req, res) => {
             }
         }
 
+        const typeFile = fileType || 'Manual';
+        const unikFile = fileUnik || `manual-${Date.now()}`;
         const mesinJson = mesinTerpilih ? JSON.stringify(mesinTerpilih) : JSON.stringify([]);
         const [historyResult] = await db.query(
             `INSERT INTO upload_history (nama_file, file_unik, tipe_file, diupload_oleh, total_item, status, mesin_digunakan, shift) 
              VALUES (?, ?, ?, ?, ?, 'Locked', ?, ?)`,
-            [fileName, fileUnik, fileType, user, parsedData.length, mesinJson, shiftInt]
+            [fileName || 'SPK_Manual', unikFile, typeFile, user || 'System', parsedData.length, mesinJson, shiftInt]
         );
 
         const historyId = historyResult.insertId;
@@ -619,12 +698,13 @@ exports.saveSPK = async (req, res) => {
             item.keterangan || null,
             item.mesinTujuan || null,
             item.tinggi_balokan || null,
-            item.prediksi_sb || null
+            item.prediksi_sb || null,
+            item.woDetails || null
         ]);
 
         if (itemsData.length > 0) {
             await db.query(
-                `INSERT INTO spk_items (history_id, no_wo, customer, nama_item, qty, estimasi_waktu_menit, match_db, spk_cutting, ukuran_p, ukuran_l, ukuran_t, qty_cutting, bahan_baku_p, bahan_baku_l, bahan_baku_t, keterangan, tipe_mesin, tinggi_balokan, prediksi_sb) 
+                `INSERT INTO spk_items (history_id, no_wo, customer, nama_item, qty, estimasi_waktu_menit, match_db, spk_cutting, ukuran_p, ukuran_l, ukuran_t, qty_cutting, bahan_baku_p, bahan_baku_l, bahan_baku_t, keterangan, tipe_mesin, tinggi_balokan, prediksi_sb, wo_details) 
                  VALUES ?`,
                 [itemsData]
             );
@@ -719,10 +799,22 @@ exports.getRekapStok = async (req, res) => {
 // ============================================================
 exports.getEfisiensi = async (req, res) => {
     try {
+        const { date, startDate, endDate } = req.query;
+        let dateCondition = "DATE(tanggal_upload) = CURDATE()";
+        let queryParams = [];
+
+        if (startDate && endDate) {
+            dateCondition = "DATE(tanggal_upload) BETWEEN ? AND ?";
+            queryParams.push(startDate, endDate);
+        } else if (date) {
+            dateCondition = "DATE(tanggal_upload) = ?";
+            queryParams.push(date);
+        }
+
         const [historyRows] = await db.query(
             `SELECT id, mesin_digunakan FROM upload_history 
-             WHERE DATE(tanggal_upload) = CURDATE() 
-             ORDER BY id ASC`
+             WHERE ${dateCondition} 
+             ORDER BY id ASC`, queryParams
         );
 
         let totalWaktu = 0;
@@ -752,7 +844,7 @@ exports.getEfisiensi = async (req, res) => {
             }
 
             const [itemResult] = await db.query(
-                `SELECT s.nama_item, SUM(s.qty) as total_qty, 
+                `SELECT s.nama_item, SUM(s.qty) as total_qty, SUM(s.prediksi_sb) as total_sb,
                         COALESCE(q.qty_ok, 0) as qty_ok, 
                         COALESCE(q.qty_ng, 0) as qty_ng, 
                         COALESCE(q.catatan, 'Menunggu Produksi') as catatan
@@ -834,16 +926,26 @@ exports.deleteSPK = async (req, res) => {
 // ============================================================
 exports.getChartData = async (req, res) => {
     try {
+        const { startDate, endDate } = req.query;
+        let dateCondition = "h.tanggal_upload >= DATE_SUB(CURDATE(), INTERVAL 6 DAY)";
+        let queryParams = [];
+
+        if (startDate && endDate) {
+            dateCondition = "DATE(h.tanggal_upload) BETWEEN ? AND ?";
+            queryParams.push(startDate, endDate);
+        }
+
         const query = `
             SELECT 
                 DATE_FORMAT(h.tanggal_upload, '%Y-%m-%d') as tanggal,
                 h.id as history_id,
-                h.mesin_digunakan
+                h.mesin_digunakan,
+                (SELECT IFNULL(SUM(JSON_LENGTH(wo_details)), 0) FROM spk_items s WHERE s.history_id = h.id) as total_wo
             FROM upload_history h
-            WHERE h.tanggal_upload >= DATE_SUB(CURDATE(), INTERVAL 6 DAY)
+            WHERE ${dateCondition}
             ORDER BY tanggal ASC, h.id ASC
         `;
-        const [rows] = await db.query(query);
+        const [rows] = await db.query(query, queryParams);
 
         const result = [];
         const dateMap = new Map();
@@ -858,6 +960,9 @@ exports.getChartData = async (req, res) => {
                     waktu_v: 0,
                     waktu_h: 0,
                     waktu_c: 0,
+                    qty_v: 0,
+                    qty_h: 0,
+                    qty_c: 0,
                     total_sb: 0,
                     mesin_v: 0,
                     mesin_h: 0,
@@ -865,10 +970,14 @@ exports.getChartData = async (req, res) => {
                     mp_v: 0,
                     mp_h: 0,
                     mp_c: 0,
-                    manpower: 0
+                    manpower: 0,
+                    total_wo: 0
                 });
             }
             const current = dateMap.get(dateStr);
+            
+            // Add WO
+            current.total_wo += Number(row.total_wo) || 0;
 
             if (row.mesin_digunakan) {
                 try {
@@ -894,16 +1003,19 @@ exports.getChartData = async (req, res) => {
                                 if (key.toLowerCase().includes('vertikal')) {
                                     current.waktu_v += wkt;
                                     current.total_sb += qty;
+                                    current.qty_v += qty;
                                     current.mesin_v += mDibutuhkan;
                                     current.mp_v += mpDibutuhkan;
                                 }
                                 else if (key.toLowerCase().includes('horizontal') || key.toLowerCase().includes('hz')) {
                                     current.waktu_h += wkt;
+                                    current.qty_h += qty;
                                     current.mesin_h += mDibutuhkan;
                                     current.mp_h += mpDibutuhkan;
                                 }
                                 else if (key.toLowerCase().includes('carousel') || key.toLowerCase().includes('cr')) {
                                     current.waktu_c += wkt;
+                                    current.qty_c += qty;
                                     current.mesin_c += mDibutuhkan;
                                     current.mp_c += mpDibutuhkan;
                                 }
@@ -1532,38 +1644,53 @@ exports.calculateOEE = async (req, res) => {
 
 exports.getActiveWOs = async (req, res) => {
     try {
-        const { tanggal } = req.query;
+        const { tanggal, startDate, endDate, include_fulfilled } = req.query;
         let query = `
             SELECT 
                 s.no_wo, 
                 s.nama_item,
+                s.ukuran_p,
+                s.ukuran_l,
                 s.ukuran_t, 
                 s.qty_cutting,
-                COALESCE(SUM(rc.hasil_qty), 0) as qty_terpenuhi
+                s.wo_details
             FROM spk_items s
             LEFT JOIN upload_history u ON s.history_id = u.id
-            LEFT JOIN realisasi_carousel rc ON s.no_wo = rc.no_wo AND rc.status = 'OK'
             WHERE s.no_wo IS NOT NULL AND s.no_wo != ''
         `;
         const queryParams = [];
 
-        if (tanggal) {
+        if (startDate && endDate) {
+            query += ` AND DATE(u.tanggal_upload) BETWEEN ? AND ?`;
+            queryParams.push(startDate, endDate);
+        } else if (tanggal) {
             query += ` AND DATE(u.tanggal_upload) = ?`;
             queryParams.push(tanggal);
         }
 
         query += `
-            GROUP BY s.no_wo, s.nama_item, s.ukuran_t, s.qty_cutting
+            GROUP BY s.no_wo, s.nama_item, s.ukuran_p, s.ukuran_l, s.ukuran_t, s.qty_cutting, s.wo_details
         `;
         const [rows] = await db.query(query, queryParams);
 
-        // Fetch fulfilled WOs independently so we can accurately check split WOs
-        const [fulfilled] = await db.query(`
-            SELECT no_wo, SUM(hasil_qty) as fulfilled_qty 
-            FROM realisasi_carousel 
-            WHERE status = 'OK' 
-            GROUP BY no_wo
-        `);
+        // Fetch fulfilled WOs independently matching the date context so old dates don't block new SPKs
+        let fulfilledQuery = `
+            SELECT rc.no_wo, SUM(rc.hasil_qty) as fulfilled_qty 
+            FROM realisasi_carousel rc
+            LEFT JOIN realisasi_identitas ri ON rc.identitas_id = ri.id
+            WHERE rc.status = 'OK'
+        `;
+        const fulfilledParams = [];
+        if (startDate && endDate) {
+            fulfilledQuery += ` AND COALESCE(DATE(rc.tanggal_wo), DATE(ri.tanggal)) BETWEEN ? AND ?`;
+            fulfilledParams.push(startDate, endDate);
+        } else if (tanggal) {
+            fulfilledQuery += ` AND COALESCE(DATE(rc.tanggal_wo), DATE(ri.tanggal)) = ?`;
+            fulfilledParams.push(tanggal);
+        }
+        fulfilledQuery += ` GROUP BY rc.no_wo`;
+        const [fulfilled] = await db.query(fulfilledQuery, fulfilledParams);
+
         const fulfilledMap = {};
         for (const f of fulfilled) {
             fulfilledMap[f.no_wo] = Number(f.fulfilled_qty);
@@ -1571,6 +1698,39 @@ exports.getActiveWOs = async (req, res) => {
 
         const splitRows = [];
         for (const row of rows) {
+            if (row.wo_details) {
+                try {
+                    const details = typeof row.wo_details === 'string' ? JSON.parse(row.wo_details) : row.wo_details;
+                    
+                    const woMap = new Map();
+                    for (const d of details) {
+                        const w = String(d.wo || '').trim();
+                        if (w && w !== '-') {
+                            const prevQty = woMap.get(w) || 0;
+                            woMap.set(w, prevQty + (Number(d.qty_cutting) || Number(d.qty) || 0));
+                        }
+                    }
+
+                    if (woMap.size > 0) {
+                        for (const [wo, qty] of woMap.entries()) {
+                            const fQty = fulfilledMap[wo] || 0;
+                            if (fQty < qty || include_fulfilled === 'true') {
+                                splitRows.push({
+                                    ...row,
+                                    no_wo: wo,
+                                    qty_cutting: qty,
+                                    qty_terpenuhi: fQty
+                                });
+                            }
+                        }
+                        continue; // Skip the legacy split logic
+                    }
+                } catch (e) {
+                    console.error('Failed to parse wo_details', e);
+                }
+            }
+
+            // Fallback for older data without wo_details
             if (row.no_wo && row.no_wo.includes(',')) {
                 const wos = row.no_wo.split(',').map(w => w.trim()).filter(Boolean);
                 // Distribute qty_cutting equally among the split WOs
@@ -1578,7 +1738,7 @@ exports.getActiveWOs = async (req, res) => {
                 
                 for (const wo of wos) {
                     const fQty = fulfilledMap[wo] || 0;
-                    if (fQty < qtyPerWo) {
+                    if (fQty < qtyPerWo || include_fulfilled === 'true') {
                         splitRows.push({
                             ...row,
                             no_wo: wo,
@@ -1591,7 +1751,7 @@ exports.getActiveWOs = async (req, res) => {
                 const wo = row.no_wo ? row.no_wo.trim() : '';
                 if (wo) {
                     const fQty = fulfilledMap[wo] || 0;
-                    if (fQty < row.qty_cutting) {
+                    if (fQty < row.qty_cutting || include_fulfilled === 'true') {
                         splitRows.push({
                             ...row,
                             no_wo: wo,

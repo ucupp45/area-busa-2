@@ -1,12 +1,25 @@
-const db = require('./config/db');
+const mysql = require('mysql2/promise');
+
 async function run() {
+  const connection = await mysql.createConnection({
+    host: 'localhost',
+    user: 'root',
+    password: '',
+    database: 'dashboard_vertikal'
+  });
+  
   try {
-    await db.query(`ALTER TABLE realisasi_identitas ADD COLUMN status VARCHAR(20) DEFAULT 'SUBMITTED'`);
-    console.log('Column added');
-  } catch (e) {
-    if(e.code === 'ER_DUP_FIELDNAME') console.log('Column already exists');
-    else console.error(e);
+    await connection.query('ALTER TABLE realisasi_carousel ADD COLUMN tanggal_wo DATE DEFAULT NULL AFTER no_disk');
+    console.log('Successfully added tanggal_wo to realisasi_carousel');
+  } catch (err) {
+    if (err.code === 'ER_DUP_FIELDNAME') {
+      console.log('tanggal_wo already exists.');
+    } else {
+      console.error(err);
+    }
+  } finally {
+    await connection.end();
   }
-  process.exit();
 }
+
 run();

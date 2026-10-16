@@ -1,0 +1,1 @@
+const db = require('./config/db'); async function check() { try { const [rows] = await db.query('SELECT no_wo, COUNT(*) FROM spk_items GROUP BY no_wo HAVING COUNT(*) > 1'); console.log(rows); } catch(e) { console.error(e); } process.exit(0); } check();

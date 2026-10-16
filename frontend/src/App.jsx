@@ -4,7 +4,11 @@ import Dashboard from './pages/Dashboard';
 import InsertSPK from './pages/InsertSPK';
 import Realisasi from './pages/Realisasi';
 import HasilRealisasi from './pages/HasilRealisasi';
+import DashboardRealisasi from './pages/DashboardRealisasi';
+import PlanningVsRealisasi from './pages/PlanningVsRealisasi';
+import SisaPotong from './pages/SisaPotong';
 import Efisiensi from './pages/Efisiensi';
+import PredictiveOeeRealisasi from './pages/PredictiveOeeRealisasi';
 import ManajemenStok from './pages/ManajemenStok';
 import DatabaseCycle from './pages/DatabaseCycle';
 import DatabaseMesinOrang from './pages/DatabaseMesinOrang';
@@ -35,11 +39,16 @@ function App() {
         <Route path="/*" element={
           <ProtectedRoute>
             <Routes>
-              <Route path="/" element={<Dashboard isAll={true} />} />
+              <Route path="/" element={<Navigate to="/planning-vs-realisasi" replace />} />
+              <Route path="/dashboard-planning" element={<Dashboard isAll={true} />} />
               <Route path="/dashboard-terakhir" element={<Dashboard />} />
               <Route path="/insert-spk" element={<InsertSPK />} />
+              <Route path="/dashboard-realisasi" element={<DashboardRealisasi />} />
+              <Route path="/planning-vs-realisasi" element={<PlanningVsRealisasi />} />
               <Route path="/realisasi/input" element={<Realisasi />} />
               <Route path="/realisasi/hasil" element={<HasilRealisasi />} />
+              <Route path="/realisasi/stok-sisa-potong" element={<SisaPotong />} />
+              <Route path="/realisasi/predictive-oee" element={<PredictiveOeeRealisasi />} />
               <Route path="/efisiensi" element={<Efisiensi />} />
               <Route path="/stok" element={<ManajemenStok />} />
               <Route path="/database" element={<Navigate to="/database/vertikal" replace />} />

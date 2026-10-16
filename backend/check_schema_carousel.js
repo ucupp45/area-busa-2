@@ -1,0 +1,1 @@
+const db = require('./config/db'); async function check() { try { const [rows] = await db.query('SHOW COLUMNS FROM realisasi_carousel'); console.log(rows); } catch(e) { console.error(e); } process.exit(0); } check();

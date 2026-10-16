@@ -2,6 +2,28 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { useSettings } from '../context/SettingsContext';
 import { Activity, AlertTriangle, Database, Clock } from 'lucide-react';
+import { getDensityFromMatrix } from '../utils/densityMatrix';
+
+const getDensity = (kualitasStr) => {
+  return getDensityFromMatrix(kualitasStr);
+};
+
+const formatKG = (m3, density) => {
+  if (!m3 || !density) return 0;
+  return Number((m3 * density).toFixed(2));
+};
+
+const calculateYield = (hasilM3, asalM3) => {
+  if (!asalM3 || asalM3 <= 0) return 0;
+  return Number(((hasilM3 / asalM3) * 100).toFixed(1));
+};
+
+const getYieldBadgeClass = (yieldPct) => {
+  if (yieldPct > 100) return 'bg-red-100 text-red-700 border-red-300';
+  if (yieldPct >= 85) return 'bg-green-100 text-green-700 border-green-300';
+  if (yieldPct >= 75) return 'bg-yellow-100 text-yellow-700 border-yellow-300';
+  return 'bg-gray-100 text-gray-600 border-gray-300';
+};
 
 const HasilRealisasi = () => {
   const { prefs } = useSettings();
@@ -302,10 +324,18 @@ const HasilRealisasi = () => {
                       <th className="border border-gray-400 bg-blue-200 text-black px-2 py-1.5 text-center font-bold align-middle w-24">Tanggal</th>
                       <th className="border border-gray-400 bg-blue-200 text-black px-2 py-1.5 text-center font-bold align-middle w-24">Barcode</th>
                       <th className="border border-gray-400 bg-amber-100 text-black px-1 py-1.5 text-center font-bold align-middle">Asal (M³)</th>
+                      <th className="border border-gray-400 bg-amber-100 text-black px-1 py-1.5 text-center font-bold align-middle text-[10px]">Asal (KG)</th>
                       <th className="border border-gray-400 bg-emerald-100 text-black px-1 py-1.5 text-center font-bold align-middle">Hasil (M³)</th>
-                      <th className="border border-gray-400 bg-orange-100 text-black px-1 py-1.5 text-center font-bold align-middle" title="Waste Samping 1 (Bag Panjang)">WS 1 (M³)</th>
-                      <th className="border border-gray-400 bg-orange-100 text-black px-1 py-1.5 text-center font-bold align-middle" title="Waste Samping 2 (Bag Lebar)">WS 2 (M³)</th>
-                      <th className="border border-gray-400 bg-red-100 text-black px-1 py-1.5 text-center font-bold align-middle">Sisa (M³)</th>
+                      <th className="border border-gray-400 bg-emerald-100 text-black px-1 py-1.5 text-center font-bold align-middle text-[10px]">Hasil (KG)</th>
+                      <th className="border border-gray-400 bg-blue-100 text-black px-1 py-1.5 text-center font-bold align-middle text-[10px]" title="Utilisasi / Yield">Util. (%)</th>
+                      <th className="border border-gray-400 bg-orange-200 text-black px-2 py-1 text-center font-bold align-middle" title="Waste Samping Kiri/Kanan (Sisi Panjang)">Waste Samping (M³)</th>
+                      <th className="border border-gray-400 bg-orange-200 text-black px-1 py-1 text-center font-bold align-middle text-[10px]" title="Waste Samping Kiri/Kanan (Sisi Panjang)">Waste Samping (KG)</th>
+                      <th className="border border-gray-400 bg-amber-200 text-black px-2 py-1 text-center font-bold align-middle" title="Waste Depan Belakang (Sisi Lebar)">Waste Depan/Belakang (M³)</th>
+                      <th className="border border-gray-400 bg-amber-200 text-black px-1 py-1 text-center font-bold align-middle text-[10px]" title="Waste Depan Belakang (Sisi Lebar)">Waste Depan/Belakang (KG)</th>
+                      <th className="border border-gray-400 bg-pink-200 text-black px-2 py-1 text-center font-bold align-middle">Waste Produksi (M³)</th>
+                      <th className="border border-gray-400 bg-pink-200 text-black px-1 py-1 text-center font-bold align-middle text-[10px]">Waste Produksi (KG)</th>
+                      <th className="border border-gray-400 bg-red-200 text-black px-2 py-1 text-center font-bold align-middle">Sisa Potong (M³)</th>
+                      <th className="border border-gray-400 bg-red-200 text-black px-1 py-1 text-center font-bold align-middle text-[10px]">Sisa Potong (KG)</th>
                       <th className="border border-gray-400 bg-gray-200 text-black px-2 py-1.5 text-center font-bold align-middle w-24">Validasi</th>
                     </tr>
                   </thead>
@@ -317,6 +347,7 @@ const HasilRealisasi = () => {
                       if (!isFirstOfGroup) return null; // We only render 1 row per Barcode for the Kubikasi table
 
                       const asalM3 = item._raw.asal_m3 || 0;
+                      const density = getDensity(item.summary_realisasi_vertical?.kualitas_busa);
 
                       return (
                         <tr key={'kubikasi_' + item._raw.id + '_' + index} className={trClass}>
@@ -330,11 +361,29 @@ const HasilRealisasi = () => {
                           <td className={`border border-gray-300 px-1 py-1.5 text-center font-bold text-amber-700 bg-amber-50 ${isDark ? 'border-gray-600 bg-amber-900/20 text-amber-400' : ''}`}>
                             {asalM3}
                           </td>
+                          <td className={`border border-gray-300 px-1 py-1.5 text-center font-medium text-[10px] text-amber-700 bg-amber-50 ${isDark ? 'border-gray-600 bg-amber-900/20 text-amber-400' : ''}`}>
+                            {formatKG(asalM3, density)}
+                          </td>
 
                           <td className={`border border-gray-300 px-1 py-1.5 text-center font-medium ${isDark ? 'border-gray-600' : ''}`}>{item._raw.total_m3_demand}</td>
-                          <td className={`border border-gray-300 px-1 py-1.5 text-center font-medium ${isDark ? 'border-gray-600' : ''}`}>{item.rincian_kubikasi.m3_waste_samping}</td>
-                          <td className={`border border-gray-300 px-1 py-1.5 text-center font-medium ${isDark ? 'border-gray-600' : ''}`}>{item.rincian_kubikasi.m3_waste_depan}</td>
+                          <td className={`border border-gray-300 px-1 py-1.5 text-center font-medium text-[10px] ${isDark ? 'border-gray-600' : ''}`}>{formatKG(item._raw.total_m3_demand, density)}</td>
+                          <td className={`border border-gray-300 px-1 py-1.5 text-center font-bold text-[10px] ${isDark ? 'border-gray-600' : ''}`}>
+                            <span className={`px-1.5 py-0.5 rounded border ${getYieldBadgeClass(calculateYield(item._raw.total_m3_demand, asalM3))}`}>
+                              {calculateYield(item._raw.total_m3_demand, asalM3)}%
+                            </span>
+                          </td>
+
+                          <td className={`border border-gray-300 px-1 py-1.5 text-center font-medium bg-orange-50/50 ${isDark ? 'border-gray-600 bg-orange-900/10' : ''}`}>{item.rincian_kubikasi.m3_waste_samping}</td>
+                          <td className={`border border-gray-300 px-1 py-1.5 text-center font-medium text-[10px] bg-orange-50/50 ${isDark ? 'border-gray-600 bg-orange-900/10' : ''}`}>{formatKG(item.rincian_kubikasi.m3_waste_samping, density)}</td>
+
+                          <td className={`border border-gray-300 px-1 py-1.5 text-center font-medium bg-amber-50/50 ${isDark ? 'border-gray-600 bg-amber-900/10' : ''}`}>{item.rincian_kubikasi.m3_waste_depan}</td>
+                          <td className={`border border-gray-300 px-1 py-1.5 text-center font-medium text-[10px] bg-amber-50/50 ${isDark ? 'border-gray-600 bg-amber-900/10' : ''}`}>{formatKG(item.rincian_kubikasi.m3_waste_depan, density)}</td>
+
+                          <td className={`border border-gray-300 px-1 py-1.5 text-center font-medium bg-pink-50/50 ${isDark ? 'border-gray-600 bg-pink-900/10' : ''}`}>{item.rincian_kubikasi.m3_waste_produksi ?? 0}</td>
+                          <td className={`border border-gray-300 px-1 py-1.5 text-center font-medium text-[10px] bg-pink-50/50 ${isDark ? 'border-gray-600 bg-pink-900/10' : ''}`}>{formatKG(item.rincian_kubikasi.m3_waste_produksi ?? 0, density)}</td>
+
                           <td className={`border border-gray-300 px-1 py-1.5 text-center font-bold text-red-600 bg-red-50 ${isDark ? 'border-gray-600 bg-red-900/20 text-red-400' : ''}`}>{item._raw.m3_sisa_potong}</td>
+                          <td className={`border border-gray-300 px-1 py-1.5 text-center font-bold text-[10px] text-red-600 bg-red-50 ${isDark ? 'border-gray-600 bg-red-900/20 text-red-400' : ''}`}>{formatKG(item._raw.m3_sisa_potong, density)}</td>
 
                           {/* VALIDASI */}
                           <td className={`border border-gray-300 px-1 py-1 text-center align-middle bg-gray-50 ${isDark ? 'border-gray-600 bg-[#1e293b]' : ''}`}>
@@ -582,17 +631,25 @@ const HasilRealisasi = () => {
                         <th className="border border-gray-400 bg-blue-200 text-black px-2 py-1.5 text-center font-bold align-middle w-24">Barcode</th>
                         <th className="border border-gray-400 bg-indigo-200 text-black px-2 py-1.5 text-center font-bold align-middle w-24">No WO</th>
                         <th className="border border-gray-400 bg-amber-100 text-black px-2 py-1.5 text-center font-bold align-middle">Asal (M³)</th>
+                        <th className="border border-gray-400 bg-amber-100 text-black px-1 py-1.5 text-center font-bold align-middle text-[10px]">Asal (KG)</th>
                         <th className="border border-gray-400 bg-emerald-200 text-black px-2 py-1 text-center font-bold">Hasil Cutting (M³)</th>
+                        <th className="border border-gray-400 bg-emerald-200 text-black px-1 py-1 text-center font-bold text-[10px]">Hasil Cutting (KG)</th>
+                        <th className="border border-gray-400 bg-blue-100 text-black px-1 py-1.5 text-center font-bold align-middle text-[10px]" title="Utilisasi / Yield">Util. (%)</th>
                         <th className="border border-gray-400 bg-orange-200 text-black px-2 py-1 text-center font-bold">Waste Kulit (M³)</th>
+                        <th className="border border-gray-400 bg-orange-200 text-black px-1 py-1 text-center font-bold text-[10px]">Waste Kulit (KG)</th>
                         <th className="border border-gray-400 bg-red-200 text-black px-2 py-1 text-center font-bold">Sisa Potong (M³)</th>
+                        <th className="border border-gray-400 bg-red-200 text-black px-1 py-1 text-center font-bold text-[10px]">Sisa Potong (KG)</th>
                         <th className="border border-gray-400 bg-purple-200 text-black px-2 py-1 text-center font-bold">Waste Potong D (M³)</th>
+                        <th className="border border-gray-400 bg-purple-200 text-black px-1 py-1 text-center font-bold text-[10px]">Waste Potong D (KG)</th>
                         <th className="border border-gray-400 bg-pink-200 text-black px-2 py-1 text-center font-bold">Waste Produksi E (M³)</th>
+                        <th className="border border-gray-400 bg-pink-200 text-black px-1 py-1 text-center font-bold text-[10px]">Waste Produksi E (KG)</th>
                         <th className="border border-gray-400 bg-gray-200 text-black px-2 py-1.5 text-center font-bold align-middle w-32">Validasi Ketinggian</th>
                       </tr>
                     </thead>
                     <tbody>
                       {filteredData.map((item, index) => {
                         const trClass = `${isDark ? 'bg-[#1e293b]' : 'bg-white'} hover:${isDark ? 'bg-slate-800' : 'bg-gray-50'}`;
+                        const density = getDensity(item.summary_realisasi_horizontal?.kualitas_busa);
                         return item.demand_list.map((wo, woIndex) => (
                           <tr key={'hor_kubikasi_' + item._raw.id + '_' + index + '_' + woIndex} className={trClass}>
                             {woIndex === 0 && (
@@ -607,29 +664,49 @@ const HasilRealisasi = () => {
                             )}
 
                             <td className={`border border-gray-300 px-2 py-1.5 text-center font-bold whitespace-nowrap bg-indigo-50 ${isDark ? 'border-gray-600 bg-indigo-900/10 text-indigo-300' : 'text-indigo-700'}`}>
-                              {wo.no_wo || '-'}
+                              <div>{wo.no_wo || '-'}</div>
+                              {Number(wo.order_qty) > 0 && Number(wo.order_qty) !== Number(wo.hasil_qty) && (
+                                <div className="text-[9px] text-red-500 font-normal mt-0.5 whitespace-normal leading-tight max-w-[120px] mx-auto bg-red-100 dark:bg-red-900/30 rounded px-1 py-0.5">
+                                  (Order {wo.order_qty}, dipotong {wo.hasil_qty})
+                                </div>
+                              )}
                             </td>
 
                             {woIndex === 0 && (
-                              <td rowSpan={item.demand_list.length} className={`border border-gray-300 px-1 py-1.5 text-center font-bold text-amber-700 bg-amber-50 ${isDark ? 'border-gray-600 bg-amber-900/20 text-amber-400' : ''}`}>
-                                {item.rincian_kubikasi.m3_asal}
-                              </td>
+                              <>
+                                <td rowSpan={item.demand_list.length} className={`border border-gray-300 px-1 py-1.5 text-center font-bold text-amber-700 bg-amber-50 ${isDark ? 'border-gray-600 bg-amber-900/20 text-amber-400' : ''}`}>
+                                  {item.rincian_kubikasi.m3_asal}
+                                </td>
+                                <td rowSpan={item.demand_list.length} className={`border border-gray-300 px-1 py-1.5 text-center font-medium text-[10px] text-amber-700 bg-amber-50 ${isDark ? 'border-gray-600 bg-amber-900/20 text-amber-400' : ''}`}>
+                                  {formatKG(item.rincian_kubikasi.m3_asal, density)}
+                                </td>
+                                <td rowSpan={item.demand_list.length} className={`border border-gray-300 px-1 py-1.5 text-center font-bold text-[10px] ${isDark ? 'border-gray-600' : ''}`}>
+                                  <span className={`px-1.5 py-0.5 rounded border ${getYieldBadgeClass(calculateYield(item.demand_list.reduce((sum, w) => sum + (w.m3_wo || 0), 0), item.rincian_kubikasi.m3_asal))}`}>
+                                    {calculateYield(item.demand_list.reduce((sum, w) => sum + (w.m3_wo || 0), 0), item.rincian_kubikasi.m3_asal)}%
+                                  </span>
+                                </td>
+                              </>
                             )}
 
                             {/* HASIL CUTTING */}
                             <td className={`border border-gray-300 px-1 py-1.5 text-center font-medium bg-emerald-50 ${isDark ? 'border-gray-600 bg-emerald-900/10' : ''}`}>{wo.m3_wo ?? 0}</td>
+                            <td className={`border border-gray-300 px-1 py-1.5 text-center font-medium text-[10px] bg-emerald-50 ${isDark ? 'border-gray-600 bg-emerald-900/10' : ''}`}>{formatKG(wo.m3_wo ?? 0, density)}</td>
 
                             {/* WASTE KULIT */}
                             <td className={`border border-gray-300 px-1 py-1.5 text-center font-medium bg-orange-50 ${isDark ? 'border-gray-600 bg-orange-900/10' : ''}`}>{wo.m3_wk ?? 0}</td>
+                            <td className={`border border-gray-300 px-1 py-1.5 text-center font-medium text-[10px] bg-orange-50 ${isDark ? 'border-gray-600 bg-orange-900/10' : ''}`}>{formatKG(wo.m3_wk ?? 0, density)}</td>
 
                             {/* SISA POTONG */}
                             <td className={`border border-gray-300 px-1 py-1.5 text-center font-bold text-red-600 bg-red-50 ${isDark ? 'border-gray-600 bg-red-900/10 text-red-400' : ''}`}>{wo.m3_sp ?? 0}</td>
+                            <td className={`border border-gray-300 px-1 py-1.5 text-center font-bold text-[10px] text-red-600 bg-red-50 ${isDark ? 'border-gray-600 bg-red-900/10 text-red-400' : ''}`}>{formatKG(wo.m3_sp ?? 0, density)}</td>
 
                             {/* WASTE POTONG */}
                             <td className={`border border-gray-300 px-1 py-1.5 text-center font-medium bg-purple-50 ${isDark ? 'border-gray-600 bg-purple-900/10' : ''}`}>{wo.m3_wp ?? 0}</td>
+                            <td className={`border border-gray-300 px-1 py-1.5 text-center font-medium text-[10px] bg-purple-50 ${isDark ? 'border-gray-600 bg-purple-900/10' : ''}`}>{formatKG(wo.m3_wp ?? 0, density)}</td>
 
                             {/* WASTE PRODUKSI */}
                             <td className={`border border-gray-300 px-1 py-1.5 text-center font-medium bg-pink-50 ${isDark ? 'border-gray-600 bg-pink-900/10' : ''}`}>{wo.m3_wpr ?? 0}</td>
+                            <td className={`border border-gray-300 px-1 py-1.5 text-center font-medium text-[10px] bg-pink-50 ${isDark ? 'border-gray-600 bg-pink-900/10' : ''}`}>{formatKG(wo.m3_wpr ?? 0, density)}</td>
 
                             {/* VALIDASI */}
                             {woIndex === 0 && (
