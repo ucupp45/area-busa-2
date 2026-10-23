@@ -1,4 +1,5 @@
 const db = require('../config/db');
+const { logAudit } = require('../utils/auditLogger');
 
 exports.getAllMatrix = async (req, res) => {
     try {
@@ -80,7 +81,16 @@ exports.updateMatrixItem = async (req, res) => {
 exports.deleteMatrixVarians = async (req, res) => {
     try {
         const { tipe_mesin, varians } = req.body;
+        const [existing] = await db.query('SELECT COUNT(*) as count FROM cycle_time_matrix WHERE tipe_mesin = ? AND varians = ?', [tipe_mesin, varians]);
         await db.query('DELETE FROM cycle_time_matrix WHERE tipe_mesin = ? AND varians = ?', [tipe_mesin, varians]);
+
+        await logAudit(req, {
+            action: 'DELETE_MATRIX_VARIANS',
+            targetEntity: 'cycle_time_matrix',
+            targetId: `${tipe_mesin}-${varians}`,
+            details: { tipe_mesin, varians, deleted_count: existing[0]?.count || 0 }
+        });
+
         res.json({ message: 'Varians berhasil dihapus' });
     } catch (error) {
         res.status(500).json({ message: 'Gagal menghapus varians', error: error.message });
@@ -90,7 +100,24 @@ exports.deleteMatrixVarians = async (req, res) => {
 exports.deleteMatrixItem = async (req, res) => {
     try {
         const { id } = req.params;
+        const [existing] = await db.query('SELECT * FROM cycle_time_matrix WHERE id = ?', [id]);
+        if (!existing || existing.length === 0) {
+            return res.status(404).json({ success: false, message: 'Item matrix tidak ditemukan' });
+        }
+
         await db.query('DELETE FROM cycle_time_matrix WHERE id = ?', [id]);
+
+        await logAudit(req, {
+            action: 'DELETE_MATRIX',
+            targetEntity: 'cycle_time_matrix',
+            targetId: id,
+            details: {
+                nama_item: existing[0].nama_item,
+                varians: existing[0].varians,
+                tipe_mesin: existing[0].tipe_mesin
+            }
+        });
+
         res.json({ message: 'Item berhasil dihapus' });
     } catch (error) {
         res.status(500).json({ message: 'Gagal menghapus item', error: error.message });
@@ -101,8 +128,17 @@ exports.deleteMatrixItemByName = async (req, res) => {
     try {
         const { nama_item, varians, tipe_mesin } = req.body;
         await db.query('DELETE FROM cycle_time_matrix WHERE nama_item = ? AND varians = ? AND tipe_mesin = ?', [nama_item, varians, tipe_mesin]);
+
+        await logAudit(req, {
+            action: 'DELETE_MATRIX_BY_NAME',
+            targetEntity: 'cycle_time_matrix',
+            targetId: `${tipe_mesin}-${nama_item}`,
+            details: { nama_item, varians, tipe_mesin }
+        });
+
         res.json({ message: 'Item berhasil dihapus' });
     } catch (error) {
         res.status(500).json({ message: 'Gagal menghapus item', error: error.message });
     }
 };
+

@@ -4,6 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const pdfParse = require('pdf-parse'); // v1.1.1 — mengekspor langsung sebagai fungsi
 const db = require('../config/db');
+const { logAudit } = require('../utils/auditLogger');
 
 // ============================================================
 // HELPER: AMBIL SELURUH NOMOR WO YANG PERNAH DIUNGGAH DI DATABASE
@@ -1020,10 +1021,13 @@ exports.saveSPK = async (req, res) => {
             }
         }
 
+        // Ambil identitas pengguna terverifikasi dari token JWT, bukan mempercayai payload klien semata
+        const verifiedUser = (req.user && (req.user.name || req.user.username)) || 'System';
+
         const [historyResult] = await db.query(
             `INSERT INTO upload_history (nama_file, file_unik, tipe_file, diupload_oleh, total_item, status, mesin_digunakan, shift) 
              VALUES (?, ?, ?, ?, ?, 'Locked', ?, ?)`,
-            [fileName || 'SPK_Manual', finalUnikFile, typeFile, user || 'System', parsedData.length, mesinJson, shiftInt]
+            [fileName || 'SPK_Manual', finalUnikFile, typeFile, verifiedUser, parsedData.length, mesinJson, shiftInt]
         );
 
         const historyId = historyResult.insertId;
@@ -1058,6 +1062,21 @@ exports.saveSPK = async (req, res) => {
                 [itemsData]
             );
         }
+
+        // Catat jejak audit (Audit Trail)
+        await logAudit(req, {
+            action: 'CREATE_SPK',
+            targetEntity: 'upload_history',
+            targetId: historyId,
+            details: {
+                nama_file: fileName || 'SPK_Manual',
+                file_unik: finalUnikFile,
+                tipe_file: typeFile,
+                diupload_oleh: verifiedUser,
+                total_item: parsedData.length,
+                shift: shiftInt
+            }
+        });
 
         res.json({ message: 'SPK berhasil dikunci dan disimpan ke database!', historyId });
     } catch (error) {
@@ -1309,6 +1328,13 @@ exports.updateSPK = async (req, res) => {
     const { id } = req.params;
     const { nama_file, fileName, shift, user, parsedData, mesinTerpilih } = req.body;
     try {
+        // Validasi keberadaan record target (IDOR Check)
+        const [existingRows] = await db.query('SELECT * FROM upload_history WHERE id = ?', [id]);
+        if (!existingRows || existingRows.length === 0) {
+            return res.status(404).json({ success: false, message: 'Data history SPK tidak ditemukan.' });
+        }
+        const existingSPK = existingRows[0];
+
         const finalName = fileName || nama_file;
 
         if (parsedData && Array.isArray(parsedData)) {
@@ -1389,10 +1415,36 @@ exports.updateSPK = async (req, res) => {
                 );
             }
 
+            // Catat Audit Trail
+            await logAudit(req, {
+                action: 'UPDATE_SPK_DEMAND',
+                targetEntity: 'upload_history',
+                targetId: id,
+                details: {
+                    nama_file_lama: existingSPK.nama_file,
+                    nama_file_baru: finalName,
+                    total_item_lama: existingSPK.total_item,
+                    total_item_baru: parsedData.length,
+                    shift: shiftInt
+                }
+            });
+
             return res.json({ message: 'Data Demand SPK berhasil diperbarui!', historyId: id });
         } else {
             // Hanya ganti nama file (Legacy)
             await db.query('UPDATE upload_history SET nama_file = ? WHERE id = ?', [finalName, id]);
+
+            // Catat Audit Trail
+            await logAudit(req, {
+                action: 'UPDATE_SPK_NAME',
+                targetEntity: 'upload_history',
+                targetId: id,
+                details: {
+                    nama_file_lama: existingSPK.nama_file,
+                    nama_file_baru: finalName
+                }
+            });
+
             return res.json({ message: 'Nama SPK berhasil diperbarui!' });
         }
     } catch (error) {
@@ -1407,22 +1459,49 @@ exports.updateSPK = async (req, res) => {
 exports.deleteSPK = async (req, res) => {
     const { id } = req.params;
     try {
-        const [rows] = await db.query('SELECT file_unik FROM upload_history WHERE id = ?', [id]);
+        // Validasi keberadaan record target (IDOR Check)
+        const [rows] = await db.query('SELECT * FROM upload_history WHERE id = ?', [id]);
 
-        if (rows.length > 0 && rows[0].file_unik) {
-            const safeFileName = path.basename(rows[0].file_unik);
+        if (!rows || rows.length === 0) {
+            return res.status(404).json({ success: false, message: 'Data history SPK tidak ditemukan.' });
+        }
+
+        const spkRecord = rows[0];
+
+        if (spkRecord.file_unik) {
+            const safeFileName = path.basename(spkRecord.file_unik);
             const filePath = path.join(__dirname, '../uploads', safeFileName);
             if (fs.existsSync(filePath)) {
-                fs.unlinkSync(filePath);
+                try {
+                    fs.unlinkSync(filePath);
+                } catch (unlinkErr) {
+                    console.warn('[WARN] Gagal menghapus file fisik:', unlinkErr.message);
+                }
             }
         }
 
         await db.query('DELETE FROM spk_items WHERE history_id = ?', [id]);
         await db.query('DELETE FROM upload_history WHERE id = ?', [id]);
-        res.json({ message: 'History SPK dan file fisik berhasil dihapus!' });
+
+        // Catat Audit Trail
+        await logAudit(req, {
+            action: 'DELETE_SPK',
+            targetEntity: 'upload_history',
+            targetId: id,
+            details: {
+                nama_file: spkRecord.nama_file,
+                file_unik: spkRecord.file_unik,
+                tipe_file: spkRecord.tipe_file,
+                diupload_oleh: spkRecord.diupload_oleh,
+                total_item: spkRecord.total_item,
+                shift: spkRecord.shift
+            }
+        });
+
+        res.json({ success: true, message: 'History SPK dan file fisik berhasil dihapus!' });
     } catch (error) {
         console.error('[ERROR] deleteSPK:', error);
-        res.status(500).json({ message: 'Gagal menghapus history SPK' });
+        res.status(500).json({ success: false, message: 'Gagal menghapus history SPK' });
     }
 };
 

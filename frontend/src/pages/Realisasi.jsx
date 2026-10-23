@@ -124,7 +124,7 @@ const Realisasi = () => {
         }
       }
     };
-    
+
     const timeoutId = setTimeout(fetchSispots, 800);
     return () => clearTimeout(timeoutId);
   }, [formData.no_barcode, editId, formData.sisa_potong_id_used]);
@@ -233,13 +233,13 @@ const Realisasi = () => {
       const currentStatus = row.identitas_status || 'SUBMITTED';
       if (filterStatus === 'DRAFT' && currentStatus !== 'DRAFT') return false;
       if (filterStatus === 'SUBMITTED' && currentStatus === 'DRAFT') return false;
-      
+
       const getTodayDateString = () => {
         const d = new Date();
         const offset = d.getTimezoneOffset() * 60000;
         return new Date(d.getTime() - offset).toISOString().split('T')[0];
       };
-      
+
       const activeDateFilter = filterDate || getTodayDateString();
       const rowDate = new Date(row.tanggal).setHours(0, 0, 0, 0);
       const targetDate = new Date(activeDateFilter).setHours(0, 0, 0, 0);
@@ -596,7 +596,7 @@ const Realisasi = () => {
       ? wosByDate[itemDate]
       : activeWOs;
 
-    const woData = woList.find(w => w.no_wo === value) 
+    const woData = woList.find(w => w.no_wo === value)
       || activeWOs.find(w => w.no_wo === value)
       || (wosByDate[itemDate] || []).find(w => w.no_wo === value);
 
@@ -718,7 +718,7 @@ const Realisasi = () => {
         finalBarcode += ` | ${String(formData.no_barcode_extra).trim()}`;
       }
       submissionData.no_barcode = finalBarcode;
-      
+
       if (formData.barcode_status === 'Normal') {
         const trimmedBarcode = String(formData.no_barcode).trim();
         if (trimmedBarcode.length !== 10) {
@@ -925,8 +925,8 @@ const Realisasi = () => {
 
   const labelClass = `block text-xs font-semibold mb-1 ${prefs.darkMode ? 'text-gray-300' : 'text-gray-600'}`;
   const inputClass = `w-full px-3 py-2 border rounded-md text-sm outline-none focus:ring-1 focus:ring-accent-blue transition-all ${prefs.darkMode
-      ? 'bg-[#1e293b] border-slate-600 text-white focus:border-accent-blue'
-      : 'bg-white border-gray-300 text-gray-800 focus:border-accent-blue'
+    ? 'bg-[#1e293b] border-slate-600 text-white focus:border-accent-blue'
+    : 'bg-white border-gray-300 text-gray-800 focus:border-accent-blue'
     }`;
 
   // Kalkulasi max Qty untuk mesin Vertical berdasarkan Kubikasi
@@ -963,7 +963,7 @@ const Realisasi = () => {
   const getBucketsStatus = () => {
     let bucketA = Number(formData.hasil_t || 0) * Number(formData.hasil_qty || 1);
     const initialBucketA = bucketA;
-    
+
     let isSispotRotated = false;
     let sispotInitialized = false;
     let bucketB = 0;
@@ -983,7 +983,7 @@ const Realisasi = () => {
 
       let source = 'Utama';
       const isUtamaExhausted = initialBucketA > 0 && bucketA <= 0.001;
-      
+
       if (!isUtamaExhausted) {
         source = 'Utama';
         bucketA -= t_needed;
@@ -993,19 +993,19 @@ const Realisasi = () => {
         }
       } else {
         source = 'Sispot';
-        
+
         if (!sispotInitialized) {
-            sispotInitialized = true;
-            if (Number(item.hasil2_l || 0) > Number(formData.sisa_l || 0)) {
-                isSispotRotated = true;
-                bucketB = Number(formData.sisa_l || 0) * Number(formData.sisa_qty || 1);
-                maxL_B = Number(formData.sisa_t || 0);
-            } else {
-                isSispotRotated = false;
-                bucketB = Number(formData.sisa_t || 0) * Number(formData.sisa_qty || 1);
-                maxL_B = Number(formData.sisa_l || 0);
-            }
-            initialBucketB = bucketB;
+          sispotInitialized = true;
+          if (Number(item.hasil2_l || 0) > Number(formData.sisa_l || 0)) {
+            isSispotRotated = true;
+            bucketB = Number(formData.sisa_l || 0) * Number(formData.sisa_qty || 1);
+            maxL_B = Number(formData.sisa_t || 0);
+          } else {
+            isSispotRotated = false;
+            bucketB = Number(formData.sisa_t || 0) * Number(formData.sisa_qty || 1);
+            maxL_B = Number(formData.sisa_l || 0);
+          }
+          initialBucketB = bucketB;
         }
 
         bucketB -= t_needed;
@@ -1023,8 +1023,8 @@ const Realisasi = () => {
     });
 
     if (!sispotInitialized) {
-        initialBucketB = Number(formData.sisa_t || 0) * Number(formData.sisa_qty || 1);
-        bucketB = initialBucketB;
+      initialBucketB = Number(formData.sisa_t || 0) * Number(formData.sisa_qty || 1);
+      bucketB = initialBucketB;
     }
 
     return { bucketA, bucketB, itemSources, isError, errorMessage, maxL_B, initialBucketA, initialBucketB, isSispotRotated };
@@ -1037,10 +1037,10 @@ const Realisasi = () => {
   const getPLProps = (index, val, basePlaceholder, tVal) => {
     const isTValEmpty = tVal === '' || tVal === null || tVal === undefined || Number(tVal) === 0;
     const itemSourceInfo = buckets.itemSources[index];
-    const isSourceExhausted = itemSourceInfo 
-      ? (itemSourceInfo.source === 'Utama' 
-          ? (buckets.initialBucketA > 0 && itemSourceInfo.sisaUtama <= 0.001) 
-          : (buckets.initialBucketB > 0 && itemSourceInfo.sisaSispot <= 0.001))
+    const isSourceExhausted = itemSourceInfo
+      ? (itemSourceInfo.source === 'Utama'
+        ? (buckets.initialBucketA > 0 && itemSourceInfo.sisaUtama <= 0.001)
+        : (buckets.initialBucketB > 0 && itemSourceInfo.sisaSispot <= 0.001))
       : false;
     const forceZero = isTValEmpty && isSourceExhausted;
 
@@ -1062,10 +1062,10 @@ const Realisasi = () => {
   const getTProps = (index, val) => {
     const isValEmpty = val === '' || val === null || val === undefined || Number(val) === 0;
     const itemSourceInfo = buckets.itemSources[index];
-    const isSourceExhausted = itemSourceInfo 
-      ? (itemSourceInfo.source === 'Utama' 
-          ? (buckets.initialBucketA > 0 && itemSourceInfo.sisaUtama <= 0.001) 
-          : (buckets.initialBucketB > 0 && itemSourceInfo.sisaSispot <= 0.001))
+    const isSourceExhausted = itemSourceInfo
+      ? (itemSourceInfo.source === 'Utama'
+        ? (buckets.initialBucketA > 0 && itemSourceInfo.sisaUtama <= 0.001)
+        : (buckets.initialBucketB > 0 && itemSourceInfo.sisaSispot <= 0.001))
       : false;
     const forceZero = isValEmpty && isSourceExhausted;
 
@@ -1089,10 +1089,10 @@ const Realisasi = () => {
     const isQtyEmpty = qtyVal === '' || qtyVal === null || qtyVal === undefined || Number(qtyVal) === 0;
     const isTValEmpty = tVal === '' || tVal === null || tVal === undefined || Number(tVal) === 0;
     const itemSourceInfo = buckets.itemSources[index];
-    const isSourceExhausted = itemSourceInfo 
-      ? (itemSourceInfo.source === 'Utama' 
-          ? (buckets.initialBucketA > 0 && itemSourceInfo.sisaUtama <= 0.001) 
-          : (buckets.initialBucketB > 0 && itemSourceInfo.sisaSispot <= 0.001))
+    const isSourceExhausted = itemSourceInfo
+      ? (itemSourceInfo.source === 'Utama'
+        ? (buckets.initialBucketA > 0 && itemSourceInfo.sisaUtama <= 0.001)
+        : (buckets.initialBucketB > 0 && itemSourceInfo.sisaSispot <= 0.001))
       : false;
     const forceZero = isTValEmpty && isSourceExhausted;
 
@@ -1117,7 +1117,7 @@ const Realisasi = () => {
   };
 
   const hasSisaPotong = Number(formData.sisa_p || 0) > 0 || Number(formData.sisa_l || 0) > 0 || Number(formData.sisa_t || 0) > 0 || Number(formData.sisa_qty || 0) > 0;
-  
+
   const isTambahWoDisabled = !hasSisaPotong || buckets.bucketA > 0.001 || isSisaZero;
   const getTambahWoTooltip = () => {
     if (!hasSisaPotong) return "Tidak bisa menambah WO karena tidak ada Sisa Potongan dari proses Vertikal.";
@@ -1128,10 +1128,10 @@ const Realisasi = () => {
   const hasUkuranAsal = Number(formData.asal_p || 0) > 0 || Number(formData.asal_l || 0) > 0 || Number(formData.asal_t || 0) > 0 || Number(formData.asal_qty || 0) > 0;
   const isSisaKeteranganEmpty = !formData.sisa_keterangan || formData.sisa_keterangan.trim() === '';
   const isKondisiBusaEmpty = !formData.keterangan_kondisi || formData.keterangan_kondisi.trim() === '';
-  
+
   const isSampingBlocked = hasUkuranAsal && Number(formData.asal_l) > 0 && Number(formData.asal_l) === Number(formData.hasil_l);
   const isDepanBlocked = hasUkuranAsal && Number(formData.asal_p) > 0 && Number(formData.asal_p) === Number(formData.hasil_p);
-  
+
   const isAnomalySamping = isSampingBlocked && (Number(formData.waste_samping_t || 0) > 0 || Number(formData.waste_samping_qty || 0) > 0);
   const isAnomalyDepan = isDepanBlocked && (Number(formData.waste_dpn_blk_t || 0) > 0 || Number(formData.waste_dpn_blk_qty || 0) > 0);
   const isAnomalyVertical = isAnomalySamping || isAnomalyDepan;
@@ -1156,9 +1156,9 @@ const Realisasi = () => {
             </div>
             <div className="p-4 space-y-3 max-h-[60vh] overflow-y-auto custom-scrollbar">
               <p className="text-sm opacity-80 mb-2">Barcode ini memiliki sisa potong sebelumnya. Pilih kepingan yang ingin Anda gunakan:</p>
-              
+
               {availableSispots.map(sp => (
-                <button 
+                <button
                   key={sp.id}
                   onClick={() => handleSelectSispot(sp)}
                   className={`w-full text-left p-4 rounded-xl border-2 transition-all hover:-translate-y-0.5 ${prefs.darkMode ? 'border-blue-900/50 hover:border-blue-500 bg-blue-900/20' : 'border-blue-100 hover:border-blue-400 bg-blue-50'}`}
@@ -1234,23 +1234,23 @@ const Realisasi = () => {
             <div className="p-6 grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-6">
               <div>
                 <label className={labelClass}>Kualitas</label>
-                <input 
-                  required 
-                  type="text" 
-                  name="kualitas" 
-                  value={formData.kualitas} 
-                  onChange={handleChange} 
-                  className={inputClass} 
-                  placeholder="Contoh: LBR R 100" 
+                <input
+                  required
+                  type="text"
+                  name="kualitas"
+                  value={formData.kualitas}
+                  onChange={handleChange}
+                  className={inputClass}
+                  placeholder="Contoh: LBR R 100"
                   readOnly={!!formData.sisa_potong_id_used}
                 />
               </div>
               <div>
                 <label className={labelClass}>Status Barcode</label>
-                <select 
-                  name="barcode_status" 
-                  value={formData.barcode_status} 
-                  onChange={handleChange} 
+                <select
+                  name="barcode_status"
+                  value={formData.barcode_status}
+                  onChange={handleChange}
                   className={inputClass}
                 >
                   <option value="Normal">Normal</option>
@@ -1259,13 +1259,13 @@ const Realisasi = () => {
               </div>
               <div>
                 <label className={labelClass}>No Barcode {formData.barcode_status === 'Abnormal' ? 'Utama' : ''}</label>
-                <input 
-                  required 
-                  type="text" 
-                  name="no_barcode" 
-                  value={formData.no_barcode} 
-                  onChange={handleChange} 
-                  className={`${inputClass} ${formData.barcode_status === 'Normal' && formData.no_barcode && formData.no_barcode.length > 10 ? 'border-red-500 focus:ring-red-500 bg-red-50 dark:bg-red-900/20' : ''}`} 
+                <input
+                  required
+                  type="text"
+                  name="no_barcode"
+                  value={formData.no_barcode}
+                  onChange={handleChange}
+                  className={`${inputClass} ${formData.barcode_status === 'Normal' && formData.no_barcode && formData.no_barcode.length > 10 ? 'border-red-500 focus:ring-red-500 bg-red-50 dark:bg-red-900/20' : ''}`}
                 />
                 {formData.barcode_status === 'Normal' && formData.no_barcode && formData.no_barcode.length > 10 && (
                   <span className="text-red-500 text-xs mt-1 block font-medium">Warning: Barcode tidak boleh lebih dari 10 digit.</span>
@@ -1274,13 +1274,13 @@ const Realisasi = () => {
               {formData.barcode_status === 'Abnormal' && (
                 <div>
                   <label className={labelClass}>No Barcode Ekstra</label>
-                  <input 
-                    required 
-                    type="text" 
-                    name="no_barcode_extra" 
-                    value={formData.no_barcode_extra} 
-                    onChange={handleChange} 
-                    className={inputClass} 
+                  <input
+                    required
+                    type="text"
+                    name="no_barcode_extra"
+                    value={formData.no_barcode_extra}
+                    onChange={handleChange}
+                    className={inputClass}
                     placeholder="Barcode tambahan..."
                   />
                 </div>
@@ -1441,8 +1441,8 @@ const Realisasi = () => {
               <div className="absolute inset-0 z-20 flex items-center justify-center bg-white/60 dark:bg-[#0f172a]/60 backdrop-blur-sm">
                 <div className="bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400 font-bold px-6 py-4 rounded-xl shadow-lg border border-red-200 dark:border-red-800 flex items-center gap-3 animate-in fade-in zoom-in max-w-lg text-center">
                   <AlertCircle size={24} className="flex-shrink-0" />
-                  {isKondisiBusaEmpty 
-                    ? 'Mohon isi "Keterangan Kondisi Busa" di Bagian I terlebih dahulu untuk membuka kunci.' 
+                  {isKondisiBusaEmpty
+                    ? 'Mohon isi "Keterangan Kondisi Busa" di Bagian I terlebih dahulu untuk membuka kunci.'
                     : isAnomalyVertical
                       ? 'Terdeteksi Anomali pada Bagian II: Ukuran P/L Asal dan Hasil Potong sama (No Waste), namun T atau Qty Waste terisi. Harap jadikan 0 sebelum lanjut.'
                       : 'Mohon isi "Keterangan Sisa Potongan" di Bagian II terlebih dahulu untuk membuka kunci.'}
@@ -1460,7 +1460,7 @@ const Realisasi = () => {
                 const sourceInfo = buckets.itemSources[index] || { source: 'Utama', sisaUtama: 0, sisaSispot: 0 };
                 const sisaTinggi = sourceInfo.source === 'Utama' ? sourceInfo.sisaUtama : sourceInfo.sisaSispot;
                 const sourceLabel = sourceInfo.source === 'Utama' ? 'Hasil Utama' : 'Sispot Vertikal';
-                const labelColorClass = sourceInfo.source === 'Utama' 
+                const labelColorClass = sourceInfo.source === 'Utama'
                   ? 'bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-900/30 dark:text-blue-400 dark:border-blue-800'
                   : 'bg-purple-100 text-purple-700 border-purple-200 dark:bg-purple-900/30 dark:text-purple-400 dark:border-purple-800';
 
@@ -1478,10 +1478,10 @@ const Realisasi = () => {
                           Sumber: {sourceLabel}
                         </span>
                         <span className={`text-xs px-2 py-0.5 rounded font-bold border ${sisaTinggi > 0
-                            ? (prefs.darkMode ? 'bg-green-900/30 text-green-400 border-green-800' : 'bg-green-100 text-green-700 border-green-200')
-                            : sisaTinggi === 0
-                              ? (prefs.darkMode ? 'bg-blue-900/30 text-blue-400 border-blue-800' : 'bg-blue-100 text-blue-700 border-blue-200')
-                              : (prefs.darkMode ? 'bg-red-900/30 text-red-400 border-red-800' : 'bg-red-100 text-red-700 border-red-200')
+                          ? (prefs.darkMode ? 'bg-green-900/30 text-green-400 border-green-800' : 'bg-green-100 text-green-700 border-green-200')
+                          : sisaTinggi === 0
+                            ? (prefs.darkMode ? 'bg-blue-900/30 text-blue-400 border-blue-800' : 'bg-blue-100 text-blue-700 border-blue-200')
+                            : (prefs.darkMode ? 'bg-red-900/30 text-red-400 border-red-800' : 'bg-red-100 text-red-700 border-red-200')
                           }`}>
                           Sisa Tinggi: {Number(sisaTinggi).toLocaleString('id-ID', { maximumFractionDigits: 2 })} cm
                         </span>
@@ -1502,208 +1502,207 @@ const Realisasi = () => {
                       </div>
                     </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-12 gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-12 gap-4">
 
-                    <div className="col-span-1 lg:col-span-2">
-                      <label className={labelClass}>Tipe Mesin</label>
-                      <select name="tipe_mesin" value={item.tipe_mesin} onChange={(e) => handleCarouselChange(index, e)} className={inputClass}>
-                        <option value="Horizontal">Horizontal</option>
-                        <option value="Carousel">Carousel</option>
-                      </select>
-                    </div>
-
-                    <div className="col-span-1 lg:col-span-2">
-                      <label className={labelClass}>No Mesin</label>
-                      <select name="no_mesin" value={item.no_mesin} onChange={(e) => handleCarouselChange(index, e)} className={inputClass}>
-                        {item.tipe_mesin === 'Horizontal' ? (
-                          <><option value="H1">H1</option><option value="H2">H2</option><option value="H3">H3</option></>
-                        ) : (
-                          <><option value="C1">C1</option><option value="C2">C2</option><option value="C3">C3</option></>
-                        )}
-                      </select>
-                    </div>
-
-                    {item.tipe_mesin === 'Carousel' && (
-                      <div className="col-span-1 lg:col-span-2 animate-in fade-in zoom-in">
-                        <label className={labelClass}>Isi Disk</label>
-                        <input type="text" name="no_disk" value={item.no_disk} onChange={(e) => handleCarouselChange(index, e)} placeholder="Isi Disk" className={`${inputClass} border-purple-400 bg-purple-50 dark:bg-purple-900/20`} />
+                      <div className="col-span-1 lg:col-span-2">
+                        <label className={labelClass}>Tipe Mesin</label>
+                        <select name="tipe_mesin" value={item.tipe_mesin} onChange={(e) => handleCarouselChange(index, e)} className={inputClass}>
+                          <option value="Horizontal">Horizontal</option>
+                          <option value="Carousel">Carousel</option>
+                        </select>
                       </div>
-                    )}
 
-                    <div className="col-span-1 lg:col-span-2">
-                      <label className={labelClass}>Tanggal WO</label>
-                      <input type="date" name="tanggal_wo" value={item.tanggal_wo} onChange={(e) => handleTanggalWoChange(index, e.target.value)} className={inputClass} />
-                    </div>
-
-                    <div 
-                      className={`col-span-1 ${item.tipe_mesin === 'Carousel' ? 'lg:col-span-4' : 'lg:col-span-3'} relative`} 
-                      onBlur={(e) => {
-                        if (!e.currentTarget.contains(e.relatedTarget)) {
-                          setFocusedWoIndex(null);
-                        }
-                      }}
-                    >
-                      <label className={labelClass}>No WO</label>
-                      <input
-                        name="no_wo"
-                        value={item.no_wo}
-                        onChange={(e) => handleWoSelect(index, e.target.value)}
-                        onFocus={() => {
-                          setFocusedWoIndex(index);
-                          if (item.tanggal_wo) fetchActiveWOs(item.tanggal_wo, true);
-                        }}
-                        className={`${inputClass} ${(item.no_wo && item.no_wo.length > 7) || (item.no_wo && /[a-zA-Z]/.test(item.no_wo)) ? 'border-red-500 focus:ring-red-500 bg-red-50 dark:bg-red-900/20' : ''}`}
-                        placeholder="Ketik & Pilih WO..."
-                        autoComplete="off"
-                      />
-                      {item.no_wo && item.no_wo.length > 7 && !/[a-zA-Z]/.test(item.no_wo) && (
-                        <span className="text-red-500 text-xs mt-1 block font-medium">Warning: No WO tidak boleh lebih dari 7 digit.</span>
-                      )}
-                      {item.no_wo && /[a-zA-Z]/.test(item.no_wo) && (
-                        <span className="text-red-500 text-xs mt-1 block font-medium">Warning: Jika huruf harus di isi ke Keterangan, bukan di No WO.</span>
-                      )}
-                      {focusedWoIndex === index && item.tanggal_wo && (
-                        <div className="absolute z-50 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-y-auto">
-                          {getAvailableWOs(index)
-                            .filter(wo => wo.no_wo.toLowerCase().includes((item.no_wo || '').toLowerCase()))
-                            .map((wo, wIdx) => (
-                            <div
-                              key={wIdx}
-                              className="px-3 py-2 cursor-pointer hover:bg-indigo-50 text-gray-800 text-sm border-b border-gray-100 last:border-0 font-medium"
-                              onMouseDown={(e) => {
-                                e.preventDefault(); 
-                                handleWoSelect(index, wo.no_wo);
-                                setFocusedWoIndex(null);
-                              }}
-                            >
-                              <div className="flex justify-between items-center gap-2">
-                                <span className="font-bold text-navy-dark">{wo.no_wo}</span>
-                                <span className="text-xs text-gray-500 font-normal">
-                                  {wo.ukuran_p ? `${Number(wo.ukuran_p)}x${Number(wo.ukuran_l)}x${Number(wo.ukuran_t)}` : (wo.ukuran_t ? `T:${Number(wo.ukuran_t)}` : '')} (Qty: {wo.qty_cutting})
-                                </span>
-                              </div>
-                            </div>
-                          ))}
-                          {getAvailableWOs(index).filter(wo => wo.no_wo.toLowerCase().includes((item.no_wo || '').toLowerCase())).length === 0 && (
-                            <div className="px-3 py-2 text-gray-500 italic text-sm">WO tidak ditemukan</div>
+                      <div className="col-span-1 lg:col-span-2">
+                        <label className={labelClass}>No Mesin</label>
+                        <select name="no_mesin" value={item.no_mesin} onChange={(e) => handleCarouselChange(index, e)} className={inputClass}>
+                          {item.tipe_mesin === 'Horizontal' ? (
+                            <><option value="H1">H1</option><option value="H2">H2</option><option value="H3">H3</option></>
+                          ) : (
+                            <><option value="C1">C1</option><option value="C2">C2</option><option value="C3">C3</option></>
                           )}
+                        </select>
+                      </div>
+
+                      {item.tipe_mesin === 'Carousel' && (
+                        <div className="col-span-1 lg:col-span-2 animate-in fade-in zoom-in">
+                          <label className={labelClass}>Isi Disk</label>
+                          <input type="text" name="no_disk" value={item.no_disk} onChange={(e) => handleCarouselChange(index, e)} placeholder="Isi Disk" className={`${inputClass} border-purple-400 bg-purple-50 dark:bg-purple-900/20`} />
+                        </div>
+                      )}
+
+                      <div className="col-span-1 lg:col-span-2">
+                        <label className={labelClass}>Tanggal WO</label>
+                        <input type="date" name="tanggal_wo" value={item.tanggal_wo} onChange={(e) => handleTanggalWoChange(index, e.target.value)} className={inputClass} />
+                      </div>
+
+                      <div
+                        className={`col-span-1 ${item.tipe_mesin === 'Carousel' ? 'lg:col-span-4' : 'lg:col-span-3'} relative`}
+                        onBlur={(e) => {
+                          if (!e.currentTarget.contains(e.relatedTarget)) {
+                            setFocusedWoIndex(null);
+                          }
+                        }}
+                      >
+                        <label className={labelClass}>No WO</label>
+                        <input
+                          name="no_wo"
+                          value={item.no_wo}
+                          onChange={(e) => handleWoSelect(index, e.target.value)}
+                          onFocus={() => {
+                            setFocusedWoIndex(index);
+                            if (item.tanggal_wo) fetchActiveWOs(item.tanggal_wo, true);
+                          }}
+                          className={`${inputClass} ${(item.no_wo && item.no_wo.length > 7) || (item.no_wo && /[a-zA-Z]/.test(item.no_wo)) ? 'border-red-500 focus:ring-red-500 bg-red-50 dark:bg-red-900/20' : ''}`}
+                          placeholder="Ketik & Pilih WO..."
+                          autoComplete="off"
+                        />
+                        {item.no_wo && item.no_wo.length > 7 && !/[a-zA-Z]/.test(item.no_wo) && (
+                          <span className="text-red-500 text-xs mt-1 block font-medium">Warning: No WO tidak boleh lebih dari 7 digit.</span>
+                        )}
+                        {item.no_wo && /[a-zA-Z]/.test(item.no_wo) && (
+                          <span className="text-red-500 text-xs mt-1 block font-medium">Warning: Jika huruf harus di isi ke Keterangan, bukan di No WO.</span>
+                        )}
+                        {focusedWoIndex === index && item.tanggal_wo && (
+                          <div className="absolute z-50 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-y-auto">
+                            {getAvailableWOs(index)
+                              .filter(wo => wo.no_wo.toLowerCase().includes((item.no_wo || '').toLowerCase()))
+                              .map((wo, wIdx) => (
+                                <div
+                                  key={wIdx}
+                                  className="px-3 py-2 cursor-pointer hover:bg-indigo-50 text-gray-800 text-sm border-b border-gray-100 last:border-0 font-medium"
+                                  onMouseDown={(e) => {
+                                    e.preventDefault();
+                                    handleWoSelect(index, wo.no_wo);
+                                    setFocusedWoIndex(null);
+                                  }}
+                                >
+                                  <div className="flex justify-between items-center gap-2">
+                                    <span className="font-bold text-navy-dark">{wo.no_wo}</span>
+                                    <span className="text-xs text-gray-500 font-normal">
+                                      {wo.ukuran_p ? `${Number(wo.ukuran_p)}x${Number(wo.ukuran_l)}x${Number(wo.ukuran_t)}` : (wo.ukuran_t ? `T:${Number(wo.ukuran_t)}` : '')} (Qty: {wo.qty_cutting})
+                                    </span>
+                                  </div>
+                                </div>
+                              ))}
+                            {getAvailableWOs(index).filter(wo => wo.no_wo.toLowerCase().includes((item.no_wo || '').toLowerCase())).length === 0 && (
+                              <div className="px-3 py-2 text-gray-500 italic text-sm">WO tidak ditemukan</div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+
+                      <div className={`col-span-1 ${item.tipe_mesin === 'Carousel' ? 'lg:col-span-8' : 'lg:col-span-3'}`}>
+                        <label className={labelClass}>{item.tipe_mesin === 'Carousel' ? 'Keterangan Tambahan WO' : 'Keterangan'}</label>
+                        <input type="text" name="keterangan" value={item.keterangan} onChange={(e) => handleCarouselChange(index, e)} placeholder={item.tipe_mesin === 'Carousel' ? "Isi ket jika WO tidak ada di daftar atau perlu catatan..." : "Isi ket jika WO tidak ada di daftar..."} className={inputClass} />
+                      </div>
+
+                      <div className="col-span-1 lg:col-span-4">
+                        <label className={labelClass}>Status Produksi</label>
+                        <div className="flex gap-2">
+                          <select name="status" value={item.status} onChange={(e) => handleCarouselChange(index, e)} className={`${inputClass} ${item.status === 'Reject' ? 'w-1/3' : 'w-full'}`}>
+                            <option value="OK">OK</option>
+                            <option value="Reject">Reject</option>
+                          </select>
+                          {item.status === 'Reject' && (
+                            <input type="text" name="alasan_reject" value={item.alasan_reject} onChange={(e) => handleCarouselChange(index, e)} placeholder="Alasan Reject..." className={`${inputClass} w-2/3`} />
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="col-span-1 lg:col-span-6">
+                        <label className={labelClass}>Hasil Cutting (P x L x T x Qty)</label>
+                        <div className="grid grid-cols-4 gap-2">
+                          <input type="number" step="any" name="hasil2_p" value={item.hasil2_p} onChange={(e) => handleCarouselChange(index, e)} placeholder="P" className={`${inputClass} border-blue-400 bg-blue-50 dark:bg-blue-900/20`} />
+                          <input type="number" step="any" name="hasil2_l" value={item.hasil2_l} onChange={(e) => handleCarouselChange(index, e)} placeholder="L" className={`${inputClass} border-blue-400 bg-blue-50 dark:bg-blue-900/20`} />
+                          <input type="number" step="any" name="hasil2_t" value={item.hasil2_t} onChange={(e) => handleCarouselChange(index, e)} placeholder="T" title="Otomatis dari WO" className={`${inputClass} border-blue-400 bg-blue-50 dark:bg-blue-900/20`} />
+                          <input type="number" name="hasil2_qty" value={item.hasil2_qty} onChange={(e) => handleCarouselChange(index, e)} placeholder="Qty" title="Otomatis dari Sisa WO" className={`${inputClass} border-blue-400 bg-blue-50 dark:bg-blue-900/20`} />
+                        </div>
+                      </div>
+
+                      <div className="col-span-1 lg:col-span-6">
+                        <label className={labelClass}>Waste Kulit (P x L x T x Qty)</label>
+                        <div className="grid grid-cols-4 gap-2">
+                          <input type="number" step="any" name="waste_kulit_p" value={item.waste_kulit_p} onChange={(e) => handleCarouselChange(index, e)} {...getPLProps(index, item.waste_kulit_p, 'P', item.waste_kulit_t)} />
+                          <input type="number" step="any" name="waste_kulit_l" value={item.waste_kulit_l} onChange={(e) => handleCarouselChange(index, e)} {...getPLProps(index, item.waste_kulit_l, 'L', item.waste_kulit_t)} />
+                          <input type="number" step="any" name="waste_kulit_t" value={item.waste_kulit_t} onChange={(e) => handleCarouselChange(index, e)} {...getTProps(index, item.waste_kulit_t)} />
+                          <input type="number" name="waste_kulit_qty" value={item.waste_kulit_qty} onChange={(e) => handleCarouselChange(index, e)} {...getQtyProps(index, item.waste_kulit_t, item.waste_kulit_qty)} />
+                        </div>
+                      </div>
+
+                      <div className="col-span-1 lg:col-span-6">
+                        <label className={labelClass}>Waste Potong (P x L x T x Qty)</label>
+                        <div className="grid grid-cols-4 gap-2">
+                          <input type="number" step="any" name="waste_potong_p" value={item.waste_potong_p} onChange={(e) => handleCarouselChange(index, e)} {...getPLProps(index, item.waste_potong_p, 'P', item.waste_potong_t)} />
+                          <input type="number" step="any" name="waste_potong_l" value={item.waste_potong_l} onChange={(e) => handleCarouselChange(index, e)} {...getPLProps(index, item.waste_potong_l, 'L', item.waste_potong_t)} />
+                          <input type="number" step="any" name="waste_potong_t" value={item.waste_potong_t} onChange={(e) => handleCarouselChange(index, e)} {...getTProps(index, item.waste_potong_t)} />
+                          <input type="number" name="waste_potong_qty" value={item.waste_potong_qty} onChange={(e) => handleCarouselChange(index, e)} {...getQtyProps(index, item.waste_potong_t, item.waste_potong_qty)} />
+                        </div>
+                      </div>
+
+                      <div className="col-span-1 lg:col-span-6">
+                        <label className={labelClass}>Waste Produksi & Keterangan</label>
+                        <div className="grid grid-cols-4 gap-2">
+                          <input type="number" step="any" name="waste_produksi_p" value={item.waste_produksi_p} onChange={(e) => handleCarouselChange(index, e)} {...getPLProps(index, item.waste_produksi_p, 'P', item.waste_produksi_t)} />
+                          <input type="number" step="any" name="waste_produksi_l" value={item.waste_produksi_l} onChange={(e) => handleCarouselChange(index, e)} {...getPLProps(index, item.waste_produksi_l, 'L', item.waste_produksi_t)} />
+                          <input type="number" step="any" name="waste_produksi_t" value={item.waste_produksi_t} onChange={(e) => handleCarouselChange(index, e)} {...getTProps(index, item.waste_produksi_t)} />
+                          <input type="number" name="waste_produksi_qty" value={item.waste_produksi_qty} onChange={(e) => handleCarouselChange(index, e)} {...getQtyProps(index, item.waste_produksi_t, item.waste_produksi_qty)} />
+                          <input type="text" name="waste_produksi_keterangan" value={item.waste_produksi_keterangan} onChange={(e) => handleCarouselChange(index, e)} placeholder="Keterangan..." className={`${inputClass} col-span-4`} />
+                        </div>
+                      </div>
+
+                      <div className="col-span-1 lg:col-span-6">
+                        <label className={labelClass}>
+                          Sispot & Keterangan
+                          {index !== formData.carousel_items.length - 1 && (
+                            <span className="text-red-500 font-normal ml-2 text-xs italic">(Hanya untuk WO terakhir)</span>
+                          )}
+                        </label>
+                        <div className={`grid grid-cols-4 gap-2 ${index !== formData.carousel_items.length - 1 ? 'opacity-50 pointer-events-none' : ''}`}>
+                          <input type="number" step="any" name="sispot_p" value={item.sispot_p} onChange={(e) => handleCarouselChange(index, e)} disabled={index !== formData.carousel_items.length - 1} {...getPLProps(index, item.sispot_p, 'P', item.sispot_t)} />
+                          <input type="number" step="any" name="sispot_l" value={item.sispot_l} onChange={(e) => handleCarouselChange(index, e)} disabled={index !== formData.carousel_items.length - 1} {...getPLProps(index, item.sispot_l, 'L', item.sispot_t)} />
+                          <input type="number" step="any" name="sispot_t" value={item.sispot_t} onChange={(e) => handleCarouselChange(index, e)} disabled={index !== formData.carousel_items.length - 1} {...getTProps(index, item.sispot_t)} />
+                          <input type="number" name="sispot_qty" value={item.sispot_qty} onChange={(e) => handleCarouselChange(index, e)} disabled={index !== formData.carousel_items.length - 1} {...getQtyProps(index, item.sispot_t, item.sispot_qty)} />
+                          <input type="text" name="sispot_keterangan" value={item.sispot_keterangan} onChange={(e) => handleCarouselChange(index, e)} disabled={index !== formData.carousel_items.length - 1} placeholder="Keterangan..." className={`${inputClass} col-span-4`} />
+                        </div>
+                      </div>
+
+                      <div className="col-span-1 lg:col-span-12 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg shadow-sm">
+                        <label className={`${labelClass} text-red-700 dark:text-red-400 font-bold flex items-center gap-2 mb-2`}>
+                          <AlertCircle size={16} /> Downtime (Kode, Jam, Ket)
+                        </label>
+                        <div className="grid grid-cols-8 gap-2">
+                          <select name="dt_kode" value={item.dt_kode} onChange={(e) => handleCarouselChange(index, e)} className={`${inputClass} col-span-1`}>
+                            <option value="">Kode</option>
+                            {downtimeOptions.map((opt, i) => (
+                              <option key={i} value={opt.value}>{opt.label}</option>
+                            ))}
+                          </select>
+                          <input type="time" name="dt_jam_awal" value={item.dt_jam_awal} onChange={(e) => handleCarouselChange(index, e)} className={`${inputClass} col-span-1`} />
+                          <input type="time" name="dt_jam_akhir" value={item.dt_jam_akhir} onChange={(e) => handleCarouselChange(index, e)} className={`${inputClass} col-span-1`} />
+                          <input type="text" value={calculateDurationMinutes(item.dt_jam_awal, item.dt_jam_akhir)} readOnly placeholder="Durasi" className={`${inputClass} col-span-1 bg-white/50 font-bold text-center text-red-600 dark:text-red-400`} />
+                          <input type="text" name="dt_keterangan" value={item.dt_keterangan} onChange={(e) => handleCarouselChange(index, e)} placeholder="Keterangan..." className={`${inputClass} col-span-4`} />
+                        </div>
+                      </div>
+
+                      {index === formData.carousel_items.length - 1 && (
+                        <div className="col-span-1 lg:col-span-12 flex justify-end mt-4 border-t pt-4 border-gray-100 dark:border-slate-700">
+                          <button
+                            type="button"
+                            onClick={addWO}
+                            disabled={isTambahWoDisabled}
+                            title={getTambahWoTooltip()}
+                            className={`flex items-center justify-center gap-1 text-xs px-4 py-2 font-bold rounded shadow-sm transition-colors ${isTambahWoDisabled
+                                ? 'bg-gray-200 text-gray-500 cursor-not-allowed dark:bg-slate-700 dark:text-gray-400'
+                                : 'bg-accent-blue text-navy-dark hover:bg-opacity-80'
+                              }`}
+                          >
+                            <Plus size={14} /> Tambah WO
+                          </button>
                         </div>
                       )}
                     </div>
-
-                    <div className={`col-span-1 ${item.tipe_mesin === 'Carousel' ? 'lg:col-span-8' : 'lg:col-span-3'}`}>
-                      <label className={labelClass}>{item.tipe_mesin === 'Carousel' ? 'Keterangan Tambahan WO' : 'Keterangan'}</label>
-                      <input type="text" name="keterangan" value={item.keterangan} onChange={(e) => handleCarouselChange(index, e)} placeholder={item.tipe_mesin === 'Carousel' ? "Isi ket jika WO tidak ada di daftar atau perlu catatan..." : "Isi ket jika WO tidak ada di daftar..."} className={inputClass} />
-                    </div>
-
-                    <div className="col-span-1 lg:col-span-4">
-                      <label className={labelClass}>Status Produksi</label>
-                      <div className="flex gap-2">
-                        <select name="status" value={item.status} onChange={(e) => handleCarouselChange(index, e)} className={`${inputClass} ${item.status === 'Reject' ? 'w-1/3' : 'w-full'}`}>
-                          <option value="OK">OK</option>
-                          <option value="Reject">Reject</option>
-                        </select>
-                        {item.status === 'Reject' && (
-                          <input type="text" name="alasan_reject" value={item.alasan_reject} onChange={(e) => handleCarouselChange(index, e)} placeholder="Alasan Reject..." className={`${inputClass} w-2/3`} />
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="col-span-1 lg:col-span-6">
-                      <label className={labelClass}>Hasil Cutting (P x L x T x Qty)</label>
-                      <div className="grid grid-cols-4 gap-2">
-                        <input type="number" step="any" name="hasil2_p" value={item.hasil2_p} onChange={(e) => handleCarouselChange(index, e)} placeholder="P" className={`${inputClass} border-blue-400 bg-blue-50 dark:bg-blue-900/20`} />
-                        <input type="number" step="any" name="hasil2_l" value={item.hasil2_l} onChange={(e) => handleCarouselChange(index, e)} placeholder="L" className={`${inputClass} border-blue-400 bg-blue-50 dark:bg-blue-900/20`} />
-                        <input type="number" step="any" name="hasil2_t" value={item.hasil2_t} onChange={(e) => handleCarouselChange(index, e)} placeholder="T" title="Otomatis dari WO" className={`${inputClass} border-blue-400 bg-blue-50 dark:bg-blue-900/20`} />
-                        <input type="number" name="hasil2_qty" value={item.hasil2_qty} onChange={(e) => handleCarouselChange(index, e)} placeholder="Qty" title="Otomatis dari Sisa WO" className={`${inputClass} border-blue-400 bg-blue-50 dark:bg-blue-900/20`} />
-                      </div>
-                    </div>
-
-                    <div className="col-span-1 lg:col-span-6">
-                      <label className={labelClass}>Waste Kulit (P x L x T x Qty)</label>
-                      <div className="grid grid-cols-4 gap-2">
-                        <input type="number" step="any" name="waste_kulit_p" value={item.waste_kulit_p} onChange={(e) => handleCarouselChange(index, e)} {...getPLProps(index, item.waste_kulit_p, 'P', item.waste_kulit_t)} />
-                        <input type="number" step="any" name="waste_kulit_l" value={item.waste_kulit_l} onChange={(e) => handleCarouselChange(index, e)} {...getPLProps(index, item.waste_kulit_l, 'L', item.waste_kulit_t)} />
-                        <input type="number" step="any" name="waste_kulit_t" value={item.waste_kulit_t} onChange={(e) => handleCarouselChange(index, e)} {...getTProps(index, item.waste_kulit_t)} />
-                        <input type="number" name="waste_kulit_qty" value={item.waste_kulit_qty} onChange={(e) => handleCarouselChange(index, e)} {...getQtyProps(index, item.waste_kulit_t, item.waste_kulit_qty)} />
-                      </div>
-                    </div>
-
-                    <div className="col-span-1 lg:col-span-6">
-                      <label className={labelClass}>Waste Potong (P x L x T x Qty)</label>
-                      <div className="grid grid-cols-4 gap-2">
-                        <input type="number" step="any" name="waste_potong_p" value={item.waste_potong_p} onChange={(e) => handleCarouselChange(index, e)} {...getPLProps(index, item.waste_potong_p, 'P', item.waste_potong_t)} />
-                        <input type="number" step="any" name="waste_potong_l" value={item.waste_potong_l} onChange={(e) => handleCarouselChange(index, e)} {...getPLProps(index, item.waste_potong_l, 'L', item.waste_potong_t)} />
-                        <input type="number" step="any" name="waste_potong_t" value={item.waste_potong_t} onChange={(e) => handleCarouselChange(index, e)} {...getTProps(index, item.waste_potong_t)} />
-                        <input type="number" name="waste_potong_qty" value={item.waste_potong_qty} onChange={(e) => handleCarouselChange(index, e)} {...getQtyProps(index, item.waste_potong_t, item.waste_potong_qty)} />
-                      </div>
-                    </div>
-
-                    <div className="col-span-1 lg:col-span-6">
-                      <label className={labelClass}>Waste Produksi & Keterangan</label>
-                      <div className="grid grid-cols-4 gap-2">
-                        <input type="number" step="any" name="waste_produksi_p" value={item.waste_produksi_p} onChange={(e) => handleCarouselChange(index, e)} {...getPLProps(index, item.waste_produksi_p, 'P', item.waste_produksi_t)} />
-                        <input type="number" step="any" name="waste_produksi_l" value={item.waste_produksi_l} onChange={(e) => handleCarouselChange(index, e)} {...getPLProps(index, item.waste_produksi_l, 'L', item.waste_produksi_t)} />
-                        <input type="number" step="any" name="waste_produksi_t" value={item.waste_produksi_t} onChange={(e) => handleCarouselChange(index, e)} {...getTProps(index, item.waste_produksi_t)} />
-                        <input type="number" name="waste_produksi_qty" value={item.waste_produksi_qty} onChange={(e) => handleCarouselChange(index, e)} {...getQtyProps(index, item.waste_produksi_t, item.waste_produksi_qty)} />
-                        <input type="text" name="waste_produksi_keterangan" value={item.waste_produksi_keterangan} onChange={(e) => handleCarouselChange(index, e)} placeholder="Keterangan..." className={`${inputClass} col-span-4`} />
-                      </div>
-                    </div>
-
-                    <div className="col-span-1 lg:col-span-6">
-                      <label className={labelClass}>
-                        Sispot & Keterangan 
-                        {index !== formData.carousel_items.length - 1 && (
-                          <span className="text-red-500 font-normal ml-2 text-xs italic">(Hanya untuk WO terakhir)</span>
-                        )}
-                      </label>
-                      <div className={`grid grid-cols-4 gap-2 ${index !== formData.carousel_items.length - 1 ? 'opacity-50 pointer-events-none' : ''}`}>
-                        <input type="number" step="any" name="sispot_p" value={item.sispot_p} onChange={(e) => handleCarouselChange(index, e)} disabled={index !== formData.carousel_items.length - 1} {...getPLProps(index, item.sispot_p, 'P', item.sispot_t)} />
-                        <input type="number" step="any" name="sispot_l" value={item.sispot_l} onChange={(e) => handleCarouselChange(index, e)} disabled={index !== formData.carousel_items.length - 1} {...getPLProps(index, item.sispot_l, 'L', item.sispot_t)} />
-                        <input type="number" step="any" name="sispot_t" value={item.sispot_t} onChange={(e) => handleCarouselChange(index, e)} disabled={index !== formData.carousel_items.length - 1} {...getTProps(index, item.sispot_t)} />
-                        <input type="number" name="sispot_qty" value={item.sispot_qty} onChange={(e) => handleCarouselChange(index, e)} disabled={index !== formData.carousel_items.length - 1} {...getQtyProps(index, item.sispot_t, item.sispot_qty)} />
-                        <input type="text" name="sispot_keterangan" value={item.sispot_keterangan} onChange={(e) => handleCarouselChange(index, e)} disabled={index !== formData.carousel_items.length - 1} placeholder="Keterangan..." className={`${inputClass} col-span-4`} />
-                      </div>
-                    </div>
-
-                    <div className="col-span-1 lg:col-span-12 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg shadow-sm">
-                      <label className={`${labelClass} text-red-700 dark:text-red-400 font-bold flex items-center gap-2 mb-2`}>
-                        <AlertCircle size={16} /> Downtime (Kode, Jam, Ket)
-                      </label>
-                      <div className="grid grid-cols-8 gap-2">
-                        <select name="dt_kode" value={item.dt_kode} onChange={(e) => handleCarouselChange(index, e)} className={`${inputClass} col-span-1`}>
-                          <option value="">Kode</option>
-                          {downtimeOptions.map((opt, i) => (
-                            <option key={i} value={opt.value}>{opt.label}</option>
-                          ))}
-                        </select>
-                        <input type="time" name="dt_jam_awal" value={item.dt_jam_awal} onChange={(e) => handleCarouselChange(index, e)} className={`${inputClass} col-span-1`} />
-                        <input type="time" name="dt_jam_akhir" value={item.dt_jam_akhir} onChange={(e) => handleCarouselChange(index, e)} className={`${inputClass} col-span-1`} />
-                        <input type="text" value={calculateDurationMinutes(item.dt_jam_awal, item.dt_jam_akhir)} readOnly placeholder="Durasi" className={`${inputClass} col-span-1 bg-white/50 font-bold text-center text-red-600 dark:text-red-400`} />
-                        <input type="text" name="dt_keterangan" value={item.dt_keterangan} onChange={(e) => handleCarouselChange(index, e)} placeholder="Keterangan..." className={`${inputClass} col-span-4`} />
-                      </div>
-                    </div>
-
-                    {index === formData.carousel_items.length - 1 && (
-                      <div className="col-span-1 lg:col-span-12 flex justify-end mt-4 border-t pt-4 border-gray-100 dark:border-slate-700">
-                        <button 
-                          type="button" 
-                          onClick={addWO} 
-                          disabled={isTambahWoDisabled}
-                          title={getTambahWoTooltip()}
-                          className={`flex items-center justify-center gap-1 text-xs px-4 py-2 font-bold rounded shadow-sm transition-colors ${
-                            isTambahWoDisabled 
-                              ? 'bg-gray-200 text-gray-500 cursor-not-allowed dark:bg-slate-700 dark:text-gray-400' 
-                              : 'bg-accent-blue text-navy-dark hover:bg-opacity-80'
-                          }`}
-                        >
-                          <Plus size={14} /> Tambah WO
-                        </button>
-                      </div>
-                    )}
                   </div>
-                </div>
-              );
+                );
               })}
             </div>
           </div>

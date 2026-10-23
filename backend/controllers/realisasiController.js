@@ -1,4 +1,5 @@
 const db = require('../config/db');
+const { logAudit } = require('../utils/auditLogger');
 
 exports.createRealisasi = async (req, res) => {
     const connection = await db.getConnection();
@@ -168,6 +169,22 @@ exports.createRealisasi = async (req, res) => {
         }
 
         await connection.commit();
+
+        // Catat Audit Trail
+        await logAudit(req, {
+            action: 'CREATE_REALISASI',
+            targetEntity: 'realisasi_identitas',
+            targetId: identitasId,
+            details: {
+                no_barcode: no_barcode || '',
+                kualitas: kualitas || '',
+                nama_operator: nama_operator || '',
+                tanggal: tanggal || null,
+                shift: shift || '',
+                status
+            }
+        });
+
         res.status(201).json({ message: 'Data realisasi berhasil disimpan!', id: identitasId });
     } catch (error) {
         await connection.rollback();
@@ -274,6 +291,14 @@ exports.updateRealisasi = async (req, res) => {
     const connection = await db.getConnection();
     try {
         await connection.beginTransaction();
+
+        // Validasi keberadaan record target (IDOR Check)
+        const [existingRows] = await connection.query('SELECT * FROM realisasi_identitas WHERE id = ?', [id]);
+        if (!existingRows || existingRows.length === 0) {
+            await connection.rollback();
+            return res.status(404).json({ success: false, message: 'Data realisasi tidak ditemukan' });
+        }
+        const existingRecord = existingRows[0];
 
         const {
             // Identitas
@@ -431,6 +456,23 @@ exports.updateRealisasi = async (req, res) => {
         }
 
         await connection.commit();
+
+        // Catat Audit Trail
+        await logAudit(req, {
+            action: 'UPDATE_REALISASI',
+            targetEntity: 'realisasi_identitas',
+            targetId: id,
+            details: {
+                old_barcode: existingRecord.no_barcode,
+                new_barcode: no_barcode,
+                kualitas,
+                operator: nama_operator,
+                tanggal,
+                shift,
+                status
+            }
+        });
+
         res.json({ message: 'Data realisasi berhasil diupdate!' });
     } catch (error) {
         await connection.rollback();
@@ -444,16 +486,38 @@ exports.updateRealisasi = async (req, res) => {
 exports.deleteRealisasi = async (req, res) => {
     const { id } = req.params;
     try {
+        // Validasi keberadaan record target (IDOR Check)
+        const [existing] = await db.query('SELECT * FROM realisasi_identitas WHERE id = ?', [id]);
+        if (!existing || existing.length === 0) {
+            return res.status(404).json({ success: false, message: 'Data realisasi tidak ditemukan' });
+        }
+        const record = existing[0];
+
         // Karena ada ON DELETE CASCADE, tabel terkait (vertical & carousel) otomatis terhapus
         await db.query(`DELETE FROM stok_sisa_potong WHERE identitas_id = ?`, [id]);
         const [result] = await db.query(`DELETE FROM realisasi_identitas WHERE id = ?`, [id]);
         if (result.affectedRows === 0) {
-            return res.status(404).json({ message: 'Data tidak ditemukan' });
+            return res.status(404).json({ success: false, message: 'Data tidak ditemukan' });
         }
-        res.json({ message: 'Data realisasi berhasil dihapus!' });
+
+        // Catat Audit Trail
+        await logAudit(req, {
+            action: 'DELETE_REALISASI',
+            targetEntity: 'realisasi_identitas',
+            targetId: id,
+            details: {
+                no_barcode: record.no_barcode,
+                kualitas: record.kualitas,
+                operator: record.nama_operator,
+                tanggal: record.tanggal,
+                shift: record.shift
+            }
+        });
+
+        res.json({ success: true, message: 'Data realisasi berhasil dihapus!' });
     } catch (error) {
         console.error('[ERROR] deleteRealisasi:', error);
-        res.status(500).json({ message: 'Gagal menghapus data realisasi', error: error.message });
+        res.status(500).json({ success: false, message: 'Gagal menghapus data realisasi', error: error.message });
     }
 };
 
@@ -912,6 +976,14 @@ exports.createSisaPotongManual = async (req, res) => {
             t || 0,
             qty || 0
         ]);
+
+        await logAudit(req, {
+            action: 'CREATE_SISA_POTONG',
+            targetEntity: 'stok_sisa_potong',
+            targetId: result.insertId,
+            details: { no_barcode, kualitas, sumber_potong, p, l, t, qty }
+        });
+
         res.status(201).json({ success: true, message: 'Sisa potong manual berhasil ditambahkan', insertId: result.insertId });
     } catch (error) {
         console.error('[ERROR] createSisaPotongManual:', error);
@@ -928,6 +1000,11 @@ exports.updateSisaPotong = async (req, res) => {
     const { id } = req.params;
     const { no_barcode, kualitas, sumber_potong, p, l, t, qty } = req.body;
     try {
+        const [existing] = await db.query('SELECT * FROM stok_sisa_potong WHERE id = ?', [id]);
+        if (!existing || existing.length === 0) {
+            return res.status(404).json({ success: false, message: 'Data sisa potong tidak ditemukan' });
+        }
+
         const query = `
             UPDATE stok_sisa_potong 
             SET no_barcode=?, kualitas=?, sumber_potong=?, p=?, l=?, t=?, qty=?
@@ -939,6 +1016,19 @@ exports.updateSisaPotong = async (req, res) => {
         if (result.affectedRows === 0) {
             return res.status(404).json({ success: false, message: 'Data sisa potong tidak ditemukan' });
         }
+
+        await logAudit(req, {
+            action: 'UPDATE_SISA_POTONG',
+            targetEntity: 'stok_sisa_potong',
+            targetId: id,
+            details: {
+                old_barcode: existing[0].no_barcode,
+                new_barcode: no_barcode,
+                kualitas,
+                p, l, t, qty
+            }
+        });
+
         res.json({ success: true, message: 'Data sisa potong berhasil diupdate' });
     } catch (error) {
         console.error('[ERROR] updateSisaPotong:', error);
@@ -954,10 +1044,30 @@ exports.deleteSisaPotong = async (req, res) => {
     }
     const { id } = req.params;
     try {
+        const [existing] = await db.query('SELECT * FROM stok_sisa_potong WHERE id = ?', [id]);
+        if (!existing || existing.length === 0) {
+            return res.status(404).json({ success: false, message: 'Data sisa potong tidak ditemukan' });
+        }
+
         const [result] = await db.query('DELETE FROM stok_sisa_potong WHERE id = ?', [id]);
         if (result.affectedRows === 0) {
             return res.status(404).json({ success: false, message: 'Data sisa potong tidak ditemukan' });
         }
+
+        await logAudit(req, {
+            action: 'DELETE_SISA_POTONG',
+            targetEntity: 'stok_sisa_potong',
+            targetId: id,
+            details: {
+                no_barcode: existing[0].no_barcode,
+                kualitas: existing[0].kualitas,
+                p: existing[0].p,
+                l: existing[0].l,
+                t: existing[0].t,
+                qty: existing[0].qty
+            }
+        });
+
         res.json({ success: true, message: 'Data sisa potong berhasil dihapus' });
     } catch (error) {
         console.error('[ERROR] deleteSisaPotong:', error);

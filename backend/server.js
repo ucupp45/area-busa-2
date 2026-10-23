@@ -87,6 +87,7 @@ const machineRoutes = require('./routes/machineRoutes');
 const mesinManpowerRoutes = require('./routes/mesinManpowerRoutes');
 const matrixRoutes = require('./routes/matrixRoutes');
 const realisasiRoutes = require('./routes/realisasiRoutes');
+const auditRoutes = require('./routes/auditRoutes');
 
 // ── 5. MOUNT ROUTER ──────────────────────────────────────────
 app.use('/api/auth', authRoutes);
@@ -95,6 +96,7 @@ app.use('/api/machines', machineRoutes);
 app.use('/api/mesin-manpower', mesinManpowerRoutes);
 app.use('/api/matrix', matrixRoutes);
 app.use('/api/realisasi', realisasiRoutes);
+app.use('/api/audit-logs', auditRoutes);
 
 app.get('/', (req, res) => {
     res.json({ message: "Server Dashboard Mesin Vertikal Berjalan Lancar!" });

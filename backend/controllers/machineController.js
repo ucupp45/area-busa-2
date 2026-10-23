@@ -1,4 +1,5 @@
 const db = require('../config/db');
+const { logAudit } = require('../utils/auditLogger');
 
 // Ideal CT dari DatabaseCycle (total 148.5 sec = 2.475 mnt/pcs)
 const IDEAL_CT_MENIT = 148.5 / 60; // ~2.475 mnt/pcs
@@ -209,6 +210,22 @@ exports.updateDowntime = async (req, res) => {
     `, [downtime, catatan || '', calc.availability, calc.performance_eff,
         calc.quality_rate, calc.oee, newStatus, mesin_id, today, shift]);
 
+    // Catat Audit Trail
+    await logAudit(req, {
+      action: 'UPDATE_DOWNTIME',
+      targetEntity: 'machine_health',
+      targetId: mesin_id,
+      details: {
+        tanggal: today,
+        shift,
+        downtime,
+        catatan,
+        previous_oee: row.oee,
+        new_oee: calc.oee,
+        status: newStatus
+      }
+    });
+
     res.json({ message: 'Downtime berhasil diupdate', oee: calc.oee, status: newStatus });
   } catch (err) {
     console.error('[ERROR] updateDowntime:', err);
@@ -236,6 +253,19 @@ exports.toggleMaintenance = async (req, res) => {
       'UPDATE machine_health SET status = ? WHERE mesin_id = ? AND tanggal = ? AND shift = ?',
       [newStatus, mesin_id, today, shift]
     );
+
+    // Catat Audit Trail
+    await logAudit(req, {
+      action: 'TOGGLE_MAINTENANCE',
+      targetEntity: 'machine_health',
+      targetId: mesin_id,
+      details: {
+        tanggal: today,
+        shift,
+        previous_status: current,
+        new_status: newStatus
+      }
+    });
 
     res.json({ message: `Mesin ${mesin_id} diubah ke ${newStatus}`, status: newStatus });
   } catch (err) {
