@@ -28,6 +28,8 @@ yarn-error.log*
 # Sensitive Production & Operational Uploads (SPK Excel, Cutting sheets, PDFs)
 backend/uploads/*
 !backend/uploads/.gitkeep
+!backend/uploads/temp/
+!backend/uploads/temp/.gitkeep
 
 # Sensitive Database Backups & Transaction Dumps
 backend/backups/*

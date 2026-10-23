@@ -39,6 +39,21 @@ app.get('/', (req, res) => {
     res.json({ message: "Server Dashboard Mesin Vertikal Berjalan Lancar!" });
 });
 
+// ── 4. ERROR HANDLING MIDDLEWARE ─────────────────────────────
+app.use((err, req, res, next) => {
+    if (err) {
+        console.error('[SERVER ERROR]:', err.message || err);
+        return res.status(err.status || 400).json({
+            success: false,
+            message: err.message || 'Terjadi kesalahan pada server saat memproses permintaan.'
+        });
+    }
+    next();
+});
+
+const { cleanupOrphanedUploads } = require('./middlewares/upload');
+
 app.listen(PORT, () => {
     console.log(`🚀 Server berjalan di http://localhost:${PORT}`);
+    cleanupOrphanedUploads();
 });

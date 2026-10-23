@@ -867,10 +867,38 @@ exports.saveSPK = async (req, res) => {
             });
         }
 
+        // Promosikan file dari staging sementara (uploads/temp/) ke penyimpanan permanen (uploads/)
+        let finalUnikFile = unikFile;
+        if (fileUnik) {
+            const safeFileUnik = path.basename(fileUnik);
+            const tempFilePath = path.join(__dirname, '../uploads/temp', safeFileUnik);
+            const permDir = path.join(__dirname, '../uploads');
+
+            if (fs.existsSync(tempFilePath)) {
+                const ext = path.extname(safeFileUnik) || '.xlsx';
+                const permFileName = `spk-${Date.now()}-${Math.round(Math.random() * 1e6)}${ext}`;
+                const permFilePath = path.join(permDir, permFileName);
+                try {
+                    fs.renameSync(tempFilePath, permFilePath);
+                    finalUnikFile = permFileName;
+                } catch (moveErr) {
+                    // Fallback copy & unlink jika cross-device link
+                    fs.copyFileSync(tempFilePath, permFilePath);
+                    fs.unlinkSync(tempFilePath);
+                    finalUnikFile = permFileName;
+                }
+            } else {
+                const existingPermPath = path.join(permDir, safeFileUnik);
+                if (fs.existsSync(existingPermPath)) {
+                    finalUnikFile = safeFileUnik;
+                }
+            }
+        }
+
         const [historyResult] = await db.query(
             `INSERT INTO upload_history (nama_file, file_unik, tipe_file, diupload_oleh, total_item, status, mesin_digunakan, shift) 
              VALUES (?, ?, ?, ?, ?, 'Locked', ?, ?)`,
-            [fileName || 'SPK_Manual', unikFile, typeFile, user || 'System', parsedData.length, mesinJson, shiftInt]
+            [fileName || 'SPK_Manual', finalUnikFile, typeFile, user || 'System', parsedData.length, mesinJson, shiftInt]
         );
 
         const historyId = historyResult.insertId;
@@ -1257,7 +1285,8 @@ exports.deleteSPK = async (req, res) => {
         const [rows] = await db.query('SELECT file_unik FROM upload_history WHERE id = ?', [id]);
 
         if (rows.length > 0 && rows[0].file_unik) {
-            const filePath = path.join(__dirname, '../uploads', rows[0].file_unik);
+            const safeFileName = path.basename(rows[0].file_unik);
+            const filePath = path.join(__dirname, '../uploads', safeFileName);
             if (fs.existsSync(filePath)) {
                 fs.unlinkSync(filePath);
             }

@@ -7,8 +7,8 @@ const { verifyToken, requireRole } = require('../middlewares/authMiddleware');
 // Semua route SPK memerlukan autentikasi
 router.use(verifyToken);
 
-// Route untuk preview (Baca Excel/PDF tanpa simpan) - PPC & Superadmin
-router.post('/preview', requireRole('PPC', 'Superadmin'), upload.single('spk_file'), spkController.previewSPK);
+// Route untuk preview (Baca Excel tanpa simpan ke permanent storage) - PPC & Superadmin
+router.post('/preview', requireRole('PPC', 'Superadmin'), upload, spkController.previewSPK);
 
 // Route untuk refresh preview dengan data matriks terbaru - PPC & Superadmin
 router.post('/refresh-preview', requireRole('PPC', 'Superadmin'), spkController.refreshPreview);
