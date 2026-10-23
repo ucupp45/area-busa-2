@@ -4,6 +4,7 @@ const dotenv = require('dotenv');
 const path = require('path');
 
 const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
 
 // Panggil koneksi database
 require('./config/db'); 
@@ -39,8 +40,41 @@ app.use(cors({
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
 }));
 
-app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ limit: '50mb', extended: true }));
+// ── 3. RATE LIMITING (Anti-Flooding & Brute-Force) ───────────
+// Batasi request umum untuk mencegah DoS dan API flooding
+const apiLimiter = rateLimit({
+    windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000, // 15 menit
+    max: parseInt(process.env.RATE_LIMIT_MAX) || 300, // Maksimal 300 request per 15 menit per IP
+    standardHeaders: 'draft-7', // Mengembalikan header standard RateLimit (draft-7)
+    legacyHeaders: true, // Mengembalikan header X-RateLimit-* untuk kompatibilitas klien
+    message: {
+        success: false,
+        message: 'Terlalu banyak permintaan dari alamat IP ini. Silakan coba lagi setelah 15 menit.'
+    }
+});
+
+// Batasi khusus endpoint login untuk mencegah credential brute-force
+const authLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 menit
+    max: 20, // Maksimal 20 percobaan login per IP per 15 menit
+    standardHeaders: 'draft-7',
+    legacyHeaders: true,
+    message: {
+        success: false,
+        message: 'Terlalu banyak percobaan autentikasi dari alamat IP ini. Silakan coba lagi setelah 15 menit.'
+    }
+});
+
+// Terapkan rate limiter ketat pada auth login
+app.use('/api/auth/login', authLimiter);
+
+// Terapkan rate limiter umum pada seluruh API endpoint
+app.use('/api/', apiLimiter);
+
+// ── 4. BATAS UKURAN PAYLOAD (Mencegah Memory Exhaustion DoS) ──
+// Batas payload diturunkan dari 50mb menjadi 2mb untuk mencegah kelelahan event loop dan memori
+app.use(express.json({ limit: '2mb' }));
+app.use(express.urlencoded({ limit: '2mb', extended: true }));
 // CATATAN KEAMANAN: Penyajian statis publik /uploads dihapus untuk mencegah Information Disclosure.
 // Seluruh unduhan file dialihkan melalui endpoint terautentikasi: GET /api/spk/download/:id
 
@@ -54,7 +88,7 @@ const mesinManpowerRoutes = require('./routes/mesinManpowerRoutes');
 const matrixRoutes = require('./routes/matrixRoutes');
 const realisasiRoutes = require('./routes/realisasiRoutes');
 
-// ── 3. MOUNT ROUTER ──────────────────────────────────────────
+// ── 5. MOUNT ROUTER ──────────────────────────────────────────
 app.use('/api/auth', authRoutes);
 app.use('/api/spk',     spkRoutes);
 app.use('/api/machines', machineRoutes);
@@ -66,9 +100,17 @@ app.get('/', (req, res) => {
     res.json({ message: "Server Dashboard Mesin Vertikal Berjalan Lancar!" });
 });
 
-// ── 4. ERROR HANDLING MIDDLEWARE ─────────────────────────────
+// ── 6. ERROR HANDLING MIDDLEWARE ─────────────────────────────
 app.use((err, req, res, next) => {
     if (err) {
+        // Penanganan khusus jika ukuran payload melebihi batas (HTTP 413 Payload Too Large)
+        if (err.type === 'entity.too.large' || err.status === 413) {
+            return res.status(413).json({
+                success: false,
+                message: 'Ukuran payload melebihi batas maksimum yang diizinkan (maksimal 2MB).'
+            });
+        }
+
         console.error('[SERVER ERROR]:', err.message || err);
         return res.status(err.status || 400).json({
             success: false,
