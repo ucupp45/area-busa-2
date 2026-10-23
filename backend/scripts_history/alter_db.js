@@ -1,15 +1,8 @@
-const mysql = require('mysql2/promise');
+const db = require('../config/db');
 
 async function run() {
-  const connection = await mysql.createConnection({
-    host: 'localhost',
-    user: 'root',
-    password: '',
-    database: 'dashboard_vertikal'
-  });
-  
   try {
-    await connection.query('ALTER TABLE realisasi_carousel ADD COLUMN tanggal_wo DATE DEFAULT NULL AFTER no_disk');
+    await db.query('ALTER TABLE realisasi_carousel ADD COLUMN tanggal_wo DATE DEFAULT NULL AFTER no_disk');
     console.log('Successfully added tanggal_wo to realisasi_carousel');
   } catch (err) {
     if (err.code === 'ER_DUP_FIELDNAME') {
@@ -18,7 +11,7 @@ async function run() {
       console.error(err);
     }
   } finally {
-    await connection.end();
+    process.exit(0);
   }
 }
 

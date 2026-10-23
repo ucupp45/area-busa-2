@@ -1,7 +1,36 @@
+# Dependencies
 node_modules/
+*/node_modules/
+
+# Environment files
 .env
-.DS_Store
+.env.*
+!.env.example
+
+# Production & Build outputs
 dist/
 build/
 coverage/
+
+# OS & Editor
+.DS_Store
+Thumbs.db
+.vscode/
+!.vscode/extensions.json
+.idea/
+
+# Logs
 *.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Sensitive Production & Operational Uploads (SPK Excel, Cutting sheets, PDFs)
+backend/uploads/*
+!backend/uploads/.gitkeep
+
+# Sensitive Database Backups & Transaction Dumps
+backend/backups/*
+!backend/backups/.gitkeep
+*.sql
+*.dump

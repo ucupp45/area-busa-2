@@ -1,8 +1,13 @@
-const mysql = require('mysql2/promise');
+const db = require('../config/db');
+
 (async () => {
-    const con = await mysql.createConnection({host:'localhost', user:'root', password:'', database:'dashboard_vertikal'});
-    await con.query(`UPDATE realisasi_identitas SET tanggal = '2026-10-02' WHERE id = 77`);
-    await con.query(`UPDATE realisasi_carousel SET tanggal_wo = '2026-10-02' WHERE identitas_id = 77`);
-    console.log('Fixed date for identitas 77');
-    await con.end();
+    try {
+        await db.query(`UPDATE realisasi_identitas SET tanggal = '2026-10-02' WHERE id = 77`);
+        await db.query(`UPDATE realisasi_carousel SET tanggal_wo = '2026-10-02' WHERE identitas_id = 77`);
+        console.log('Fixed date for identitas 77');
+    } catch (err) {
+        console.error(err);
+    } finally {
+        process.exit(0);
+    }
 })();

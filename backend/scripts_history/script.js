@@ -1,7 +1,12 @@
-const mysql = require('mysql2/promise');
+const db = require('../config/db');
+
 (async () => {
-  const con = await mysql.createConnection({host:'localhost', user:'root', password:'', database:'dashboard_vertikal'});
-  const [rows] = await con.query("SELECT * FROM cycle_time_matrix WHERE nama_item LIKE '%LBR D 55%'");
-  console.log(rows);
-  await con.end();
+  try {
+    const [rows] = await db.query("SELECT * FROM cycle_time_matrix WHERE nama_item LIKE '%LBR D 55%'");
+    console.log(rows);
+  } catch (err) {
+    console.error(err);
+  } finally {
+    process.exit(0);
+  }
 })();

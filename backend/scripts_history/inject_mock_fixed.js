@@ -1,14 +1,8 @@
-const mysql = require('mysql2/promise');
+const db = require('../config/db');
 
 (async () => {
-    let connection;
     try {
-        connection = await mysql.createConnection({
-            host: 'localhost',
-            user: 'root',
-            password: '',
-            database: 'dashboard_vertikal'
-        });
+        const connection = db;
 
         // 1. CLEAR the previous wrongly injected mock data
         console.log("Cleaning up previous wrong injections...");
@@ -145,6 +139,6 @@ const mysql = require('mysql2/promise');
     } catch (err) {
         console.error(err);
     } finally {
-        if (connection) await connection.end();
+        process.exit(0);
     }
 })();
