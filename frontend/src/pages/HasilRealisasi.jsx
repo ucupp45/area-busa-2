@@ -118,19 +118,19 @@ const HasilRealisasi = () => {
       <div className={`sticky top-0 z-10 flex flex-wrap items-center justify-between border-b backdrop-blur-md pt-4 px-2 -mx-2 ${isDark ? 'border-gray-700 bg-[#0f172a]/70' : 'border-gray-300 bg-white/70'}`}>
         <div className="flex overflow-x-auto">
           <button
-            className={`px-6 py-3 font-bold text-sm tracking-wide border-b-2 transition-colors whitespace-nowrap ${activeTab === 'vertikal' ? (isDark ? 'border-indigo-400 text-indigo-400' : 'border-indigo-600 text-indigo-600') : (isDark ? 'border-transparent text-gray-400 hover:text-gray-200' : 'border-transparent text-gray-500 hover:text-gray-700')}`}
+            className={`px-6 py-3 font-bold text-sm tracking-wide border-b-2 transition-all duration-300 ease-out whitespace-nowrap active:scale-95 ${activeTab === 'vertikal' ? (isDark ? 'border-indigo-400 text-indigo-400 bg-indigo-500/10' : 'border-indigo-600 text-indigo-600 bg-indigo-50/50') : (isDark ? 'border-transparent text-gray-400 hover:text-gray-200 hover:bg-slate-800/40' : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-100/50')}`}
             onClick={() => setActiveTab('vertikal')}
           >
             MESIN VERTIKAL
           </button>
           <button
-            className={`px-6 py-3 font-bold text-sm tracking-wide border-b-2 transition-colors whitespace-nowrap ${activeTab === 'horizontal' ? (isDark ? 'border-indigo-400 text-indigo-400' : 'border-indigo-600 text-indigo-600') : (isDark ? 'border-transparent text-gray-400 hover:text-gray-200' : 'border-transparent text-gray-500 hover:text-gray-700')}`}
+            className={`px-6 py-3 font-bold text-sm tracking-wide border-b-2 transition-all duration-300 ease-out whitespace-nowrap active:scale-95 ${activeTab === 'horizontal' ? (isDark ? 'border-indigo-400 text-indigo-400 bg-indigo-500/10' : 'border-indigo-600 text-indigo-600 bg-indigo-50/50') : (isDark ? 'border-transparent text-gray-400 hover:text-gray-200 hover:bg-slate-800/40' : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-100/50')}`}
             onClick={() => setActiveTab('horizontal')}
           >
             MESIN HORIZONTAL
           </button>
           <button
-            className={`px-6 py-3 font-bold text-sm tracking-wide border-b-2 transition-colors whitespace-nowrap ${activeTab === 'carousel' ? (isDark ? 'border-indigo-400 text-indigo-400' : 'border-indigo-600 text-indigo-600') : (isDark ? 'border-transparent text-gray-400 hover:text-gray-200' : 'border-transparent text-gray-500 hover:text-gray-700')}`}
+            className={`px-6 py-3 font-bold text-sm tracking-wide border-b-2 transition-all duration-300 ease-out whitespace-nowrap active:scale-95 ${activeTab === 'carousel' ? (isDark ? 'border-indigo-400 text-indigo-400 bg-indigo-500/10' : 'border-indigo-600 text-indigo-600 bg-indigo-50/50') : (isDark ? 'border-transparent text-gray-400 hover:text-gray-200 hover:bg-slate-800/40' : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-100/50')}`}
             onClick={() => setActiveTab('carousel')}
           >
             MESIN CAROUSEL

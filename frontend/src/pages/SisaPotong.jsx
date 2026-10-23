@@ -43,11 +43,10 @@ const SisaPotong = () => {
       return;
     }
     try {
-      const config = { headers: { 'x-user-role': user?.role || '' } };
       if (formSispot.id) {
-        await axios.put(`http://localhost:5000/api/realisasi/sisa-potong/${formSispot.id}`, formSispot, config);
+        await axios.put(`http://localhost:5000/api/realisasi/sisa-potong/${formSispot.id}`, formSispot);
       } else {
-        await axios.post('http://localhost:5000/api/realisasi/sisa-potong', formSispot, config);
+        await axios.post('http://localhost:5000/api/realisasi/sisa-potong', formSispot);
       }
       setIsFormModalOpen(false);
       fetchData();
@@ -73,8 +72,7 @@ const SisaPotong = () => {
       return;
     }
     try {
-      const config = { headers: { 'x-user-role': user?.role || '' } };
-      await axios.delete(`http://localhost:5000/api/realisasi/sisa-potong/${selectedId}`, config);
+      await axios.delete(`http://localhost:5000/api/realisasi/sisa-potong/${selectedId}`);
       setIsDeleteModalOpen(false);
       fetchData();
     } catch (error) {

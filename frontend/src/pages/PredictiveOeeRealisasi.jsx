@@ -200,13 +200,11 @@ const PredictiveOeeRealisasi = () => {
   }, [realisasiData, matrixData, tanggal]);
 
   const chartData = useMemo(() => {
-    if (!realisasiData.length) return [];
-    
     const past7Days = getPast7Days();
     const KELAS_MESIN = 420;
 
     return past7Days.map(dayInfo => {
-      const realisasiHariIni = realisasiData.filter(r => {
+      const realisasiHariIni = (realisasiData || []).filter(r => {
         if (!r.tanggal) return false;
         const d = new Date(r.tanggal);
         const rStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -214,29 +212,45 @@ const PredictiveOeeRealisasi = () => {
       });
       
       let wV = 0, wH = 0, wC = 0;
+      const vMachines = new Set();
+      const hMachines = new Set();
+      const cMachines = new Set();
 
       realisasiHariIni.forEach(r => {
         const rowCT = calculateRowCT(r, matrixData);
         wV += rowCT.wV;
         wH += rowCT.wH;
         wC += rowCT.wC;
+
+        if (r.v_hasil_qty && r.v_no_mesin) vMachines.add(r.v_no_mesin);
+        if (r.carousel_items && r.carousel_items.length > 0) {
+          r.carousel_items.forEach(c => {
+            if (c.no_mesin) {
+              if (c.tipe_mesin === 'Carousel') cMachines.add(c.no_mesin);
+              else hMachines.add(c.no_mesin);
+            }
+          });
+        }
       });
       
-      let final_mV = wV > 0 ? Math.ceil(wV / KELAS_MESIN) : 1;
-      let final_mH = wH > 0 ? Math.ceil(wH / KELAS_MESIN) : 1;
-      let final_mC = wC > 0 ? Math.ceil(wC / KELAS_MESIN) : 1;
+      // Jumlah pemakaian mesin: jika ada mesin riil gunakan set size, jika ada waktu gunakan ceil(waktu / 420), jika tidak ada pemakaian maka 0
+      let countV = vMachines.size || (wV > 0 ? Math.ceil(wV / KELAS_MESIN) : 0);
+      let countH = hMachines.size || (wH > 0 ? Math.ceil(wH / KELAS_MESIN) : 0);
+      let countC = cMachines.size || (wC > 0 ? Math.ceil(wC / KELAS_MESIN) : 0);
       
-      if (final_mV > 3) final_mV = 3;
-      if (final_mH > 3) final_mH = 3;
-      if (final_mC > 2) final_mC = 2;
+      if (countV > 3) countV = 3;
+      if (countH > 3) countH = 3;
+      if (countC > 2) countC = 2;
 
-      let oee_v = wV > 0 ? (wV / (final_mV * KELAS_MESIN)) * 100 : 0;
-      let oee_h = wH > 0 ? (wH / (final_mH * KELAS_MESIN)) * 100 : 0;
-      let oee_c = wC > 0 ? (wC / (final_mC * KELAS_MESIN)) * 100 : 0;
+      let oee_v = (wV > 0 && countV > 0) ? (wV / (countV * KELAS_MESIN)) * 100 : 0;
+      let oee_h = (wH > 0 && countH > 0) ? (wH / (countH * KELAS_MESIN)) * 100 : 0;
+      let oee_c = (wC > 0 && countC > 0) ? (wC / (countC * KELAS_MESIN)) * 100 : 0;
 
       return {
           tanggal: dayInfo.label,
-          Vertikal: final_mV, Horizontal: final_mH, Carousel: final_mC,
+          Vertikal: countV, 
+          Horizontal: countH, 
+          Carousel: countC,
           oee_v: Number(Math.min(oee_v, 100).toFixed(1)),
           oee_h: Number(Math.min(oee_h, 100).toFixed(1)),
           oee_c: Number(Math.min(oee_c, 100).toFixed(1))

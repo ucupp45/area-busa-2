@@ -1,6 +1,6 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useState, useEffect } from 'react';
-import { LayoutDashboard, FilePlus, Activity, Package, Database, Settings, LogOut, TrendingUp, ClipboardCheck, ChevronLeft, ChevronRight } from 'lucide-react';
+import { LayoutDashboard, FilePlus, Activity, Package, Database, Settings, LogOut, TrendingUp, ClipboardCheck, ChevronLeft, ChevronRight, ChevronDown } from 'lucide-react';
 import { useSettings } from '../context/SettingsContext';
 
 const Layout = ({ children }) => {
@@ -27,6 +27,7 @@ const Layout = ({ children }) => {
     : t.shift3;
 
   const handleLogout = () => {
+    localStorage.removeItem('token');
     localStorage.removeItem('user');
     navigate('/login');
   };
@@ -118,18 +119,18 @@ const Layout = ({ children }) => {
         {/* Toggle Button Absolute */}
         <button 
           onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)} 
-          className={`absolute -right-4 top-1/2 -translate-y-1/2 z-40 bg-accent-blue text-navy-dark p-1 rounded-full shadow-lg hover:scale-110 transition-transform flex items-center justify-center border-[3px] ${prefs.darkMode ? 'border-[#0f172a]' : 'border-gray-50'}`}
+          className={`absolute -right-4 top-1/2 -translate-y-1/2 z-40 bg-accent-blue text-navy-dark p-1 rounded-full shadow-lg hover:scale-110 active:scale-90 transition-all duration-300 ease-out flex items-center justify-center border-[3px] ${prefs.darkMode ? 'border-[#0f172a]' : 'border-gray-50'}`}
           title={isSidebarCollapsed ? "Perlebar Sidebar" : "Perkecil Sidebar"}
         >
           {isSidebarCollapsed ? <ChevronRight size={18} strokeWidth={3} /> : <ChevronLeft size={18} strokeWidth={3} />}
         </button>
 
         <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
-          <div className={`h-16 flex-shrink-0 flex items-center ${isSidebarCollapsed ? 'justify-center' : 'justify-start'} border-b border-white/10 px-4`}>
+          <div className="h-16 flex-shrink-0 flex items-center justify-center border-b border-white/10 px-4">
             {!isSidebarCollapsed ? (
-              <h1 className="text-xl font-bold tracking-wider text-accent-blue whitespace-nowrap overflow-hidden">AREA BUSA 2</h1>
+              <h1 className="text-xl font-bold tracking-wider text-accent-blue whitespace-nowrap overflow-hidden text-center">AREA BUSA 2</h1>
             ) : (
-              <h1 className="text-lg font-bold tracking-wider text-accent-blue whitespace-nowrap overflow-hidden">AB2</h1>
+              <h1 className="text-lg font-bold tracking-wider text-accent-blue whitespace-nowrap overflow-hidden text-center">AB2</h1>
             )}
           </div>
           <nav className="flex-1 overflow-y-auto mt-6 px-3 pb-4 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:bg-white/20 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-white/30">
@@ -150,22 +151,32 @@ const Layout = ({ children }) => {
                             : [...prev, item.id]
                         );
                       }}
-                      className={`w-full flex items-center ${isSidebarCollapsed ? 'justify-center px-0' : 'justify-between px-3'} py-3 rounded-lg transition-all duration-200 ${
+                      className={`w-full flex items-center ${isSidebarCollapsed ? 'justify-center px-0' : 'justify-between px-3'} py-3 rounded-xl transition-all duration-300 ease-out group ${
                         isSubActive
-                          ? 'bg-accent-blue/10 text-accent-blue font-bold'
+                          ? 'bg-accent-blue/15 text-accent-blue font-bold shadow-sm'
                           : 'hover:bg-white/10 text-gray-300 hover:text-white'
                       }`}
                       title={isSidebarCollapsed ? item.name : ''}
                     >
                       <div className="flex items-center justify-center gap-3">
-                        <Icon size={20} strokeWidth={isSubActive ? 2.5 : 2} className="flex-shrink-0" />
-                        {!isSidebarCollapsed && <span className="text-sm whitespace-nowrap overflow-hidden text-ellipsis">{item.name}</span>}
+                        <Icon size={20} strokeWidth={isSubActive ? 2.5 : 2} className="flex-shrink-0 transition-transform duration-300 group-hover:scale-110" />
+                        {!isSidebarCollapsed && <span className="text-sm whitespace-nowrap overflow-hidden text-ellipsis transition-colors duration-200">{item.name}</span>}
                       </div>
-                      {!isSidebarCollapsed && <span className="text-xs">{isOpen ? '▼' : '▶'}</span>}
+                      {!isSidebarCollapsed && (
+                        <ChevronDown 
+                          size={15} 
+                          className={`transition-transform duration-300 ease-in-out shrink-0 ${isOpen ? 'rotate-180 text-accent-blue' : 'text-gray-400 group-hover:text-gray-200'}`} 
+                        />
+                      )}
                     </button>
                     
-                    {isOpen && !isSidebarCollapsed && (
-                      <div className="mt-1 ml-4 pl-4 border-l border-white/20 flex flex-col gap-1">
+                    {/* Animated Accordion Container using CSS Grid for natural smooth height expansion */}
+                    <div 
+                      className={`grid transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] overflow-hidden ${
+                        isOpen && !isSidebarCollapsed ? 'grid-rows-[1fr] opacity-100 mt-1.5' : 'grid-rows-[0fr] opacity-0 mt-0 pointer-events-none'
+                      }`}
+                    >
+                      <div className="min-h-0 ml-4 pl-3.5 border-l-2 border-white/20 flex flex-col gap-1 py-1">
                         {item.subItems.map((sub) => {
                           const SubIcon = sub.icon;
                           const isActive = location.pathname === sub.path;
@@ -173,19 +184,19 @@ const Layout = ({ children }) => {
                             <Link
                               key={sub.path}
                               to={sub.path}
-                              className={`flex items-center gap-3 px-3 py-2 rounded-lg transition-all duration-200 ${
+                              className={`flex items-center gap-3 px-3 py-2 rounded-lg transition-all duration-200 ease-out group/sub ${
                                 isActive
-                                  ? 'bg-accent-blue text-navy-dark font-bold shadow-md'
-                                  : 'hover:bg-white/10 text-gray-400 hover:text-white'
+                                  ? 'bg-accent-blue text-navy-dark font-bold shadow-md translate-x-1'
+                                  : 'hover:bg-white/10 text-gray-400 hover:text-white hover:translate-x-1'
                               }`}
                             >
-                              <SubIcon size={16} strokeWidth={isActive ? 2.5 : 2} className="flex-shrink-0" />
+                              <SubIcon size={16} strokeWidth={isActive ? 2.5 : 2} className="flex-shrink-0 transition-transform duration-200 group-hover/sub:scale-110" />
                               <span className="text-sm whitespace-nowrap overflow-hidden text-ellipsis">{sub.name}</span>
                             </Link>
                           );
                         })}
                       </div>
-                    )}
+                    </div>
                   </div>
                 );
               }
@@ -195,14 +206,14 @@ const Layout = ({ children }) => {
                 <Link
                   key={item.path}
                   to={item.path}
-                  className={`flex items-center ${isSidebarCollapsed ? 'justify-center px-0' : 'px-3'} gap-3 py-3 mb-2 rounded-lg transition-all duration-200 ${
+                  className={`flex items-center ${isSidebarCollapsed ? 'justify-center px-0' : 'px-3'} gap-3 py-3 mb-2 rounded-xl transition-all duration-200 ease-out group ${
                     isActive
-                      ? 'bg-accent-blue text-navy-dark font-bold shadow-md'
-                      : 'hover:bg-white/10 text-gray-300 hover:text-white'
+                      ? 'bg-accent-blue text-navy-dark font-bold shadow-md translate-x-1'
+                      : 'hover:bg-white/10 text-gray-300 hover:text-white hover:translate-x-1'
                   }`}
                   title={isSidebarCollapsed ? item.name : ''}
                 >
-                  <Icon size={20} strokeWidth={isActive ? 2.5 : 2} className="flex-shrink-0" />
+                  <Icon size={20} strokeWidth={isActive ? 2.5 : 2} className="flex-shrink-0 transition-transform duration-200 group-hover:scale-110" />
                   {!isSidebarCollapsed && <span className="text-sm whitespace-nowrap overflow-hidden text-ellipsis">{item.name}</span>}
                 </Link>
               );
@@ -211,25 +222,25 @@ const Layout = ({ children }) => {
         </div>
 
         {/* Sidebar Bottom */}
-        <div className="flex-shrink-0 px-3 py-6 border-t border-white/10 flex flex-col gap-1">
+        <div className="flex-shrink-0 px-3 py-6 border-t border-white/10 flex flex-col gap-1.5">
           <Link
             to="/setting"
-            className={`flex items-center ${isSidebarCollapsed ? 'justify-center px-0' : 'px-3'} gap-3 py-2 w-full rounded-lg transition-colors ${
+            className={`flex items-center ${isSidebarCollapsed ? 'justify-center px-0' : 'px-3'} gap-3 py-2.5 w-full rounded-xl transition-all duration-200 ease-out group hover:translate-x-1 ${
               location.pathname === '/setting'
                 ? 'bg-accent-blue text-navy-dark font-bold shadow-md'
                 : 'text-gray-300 hover:bg-white/10 hover:text-white'
             }`}
             title={isSidebarCollapsed ? t.setting : ''}
           >
-            <Settings size={20} />
+            <Settings size={20} className="transition-transform duration-300 group-hover:rotate-45 shrink-0" />
             {!isSidebarCollapsed && <span className="text-sm whitespace-nowrap">{t.setting}</span>}
           </Link>
           <button
             onClick={handleLogout}
-            className={`flex items-center ${isSidebarCollapsed ? 'justify-center px-0' : 'px-3'} gap-3 py-2 w-full text-red-400 hover:bg-red-500/10 hover:text-red-300 rounded-lg transition-colors`}
+            className={`flex items-center ${isSidebarCollapsed ? 'justify-center px-0' : 'px-3'} gap-3 py-2.5 w-full text-red-400 hover:bg-red-500/15 hover:text-red-300 rounded-xl transition-all duration-200 ease-out group hover:translate-x-1 active:scale-95`}
             title={isSidebarCollapsed ? t.logOut : ''}
           >
-            <LogOut size={20} />
+            <LogOut size={20} className="transition-transform duration-200 group-hover:-translate-x-1 shrink-0" />
             {!isSidebarCollapsed && <span className="text-sm whitespace-nowrap">{t.logOut}</span>}
           </button>
         </div>
@@ -271,9 +282,11 @@ const Layout = ({ children }) => {
           </div>
         </header>
 
-        {/* ISI HALAMAN */}
-        <div className={`flex-1 overflow-auto p-8 ${bgContent} transition-colors duration-300`}>
-          {children}
+        {/* ISI HALAMAN DENGAN TRANSISI HALUS */}
+        <div className={`flex-1 overflow-auto p-8 ${bgContent} transition-colors duration-300 scroll-smooth`}>
+          <div key={location.pathname} className="animate-page-fade">
+            {children}
+          </div>
         </div>
       </main>
     </div>

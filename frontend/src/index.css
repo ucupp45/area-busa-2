@@ -73,14 +73,37 @@ body {
 .dark .border-gray-200{ border-color: #334155 !important; }
 .dark .border-gray-100{ border-color: #1e293b !important; }
 
+/* ── Smooth Scrolling & Global Interactive Transitions ──────── */
+html {
+  scroll-behavior: smooth;
+}
+
+button, 
+a, 
+input[type="button"], 
+input[type="submit"], 
+select {
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+button:active:not(:disabled), 
+input[type="button"]:active:not(:disabled), 
+input[type="submit"]:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+input, select, textarea {
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease;
+}
+
 /* ── Custom Animations ───────────────────────────────────── */
 @keyframes popupFadeIn {
-  from { opacity: 0; transform: scale(0.95) translateY(10px); }
+  from { opacity: 0; transform: scale(0.96) translateY(8px); }
   to { opacity: 1; transform: scale(1) translateY(0); }
 }
 
 @keyframes slideDown {
-  from { opacity: 0; transform: translateY(-10px); }
+  from { opacity: 0; transform: translateY(-8px); }
   to { opacity: 1; transform: translateY(0); }
 }
 
@@ -89,14 +112,29 @@ body {
   to { opacity: 1; }
 }
 
+@keyframes pageFadeSlide {
+  from { 
+    opacity: 0; 
+    transform: translateY(6px); 
+  }
+  to { 
+    opacity: 1; 
+    transform: translateY(0); 
+  }
+}
+
 .animate-popup {
-  animation: popupFadeIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: popupFadeIn 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
 .animate-slide-down {
-  animation: slideDown 0.3s ease-out forwards;
+  animation: slideDown 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
 .animate-fade-in {
-  animation: fadeIn 0.3s ease-out forwards;
+  animation: fadeIn 0.25s ease-out forwards;
+}
+
+.animate-page-fade {
+  animation: pageFadeSlide 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }

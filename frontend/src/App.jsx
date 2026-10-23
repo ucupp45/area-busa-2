@@ -16,14 +16,64 @@ import Setting from './pages/Setting';
 import Login from './pages/Login';
 import { SettingsProvider } from './context/SettingsContext';
 
-// Komponen untuk melindungi rute dari user yang belum login
+import { useState, useEffect } from 'react';
+import axios from 'axios';
+
+// Komponen untuk melindungi rute dan memverifikasi token ke server
 const ProtectedRoute = ({ children }) => {
+  const token = localStorage.getItem('token');
   const user = localStorage.getItem('user');
-  // Jika tidak ada data user di localStorage, tendang ke halaman login
-  if (!user) {
+  const [isValidating, setIsValidating] = useState(true);
+  const [isAuthenticated, setIsAuthenticated] = useState(!!(token && user));
+
+  useEffect(() => {
+    if (!token || !user) {
+      setIsAuthenticated(false);
+      setIsValidating(false);
+      return;
+    }
+
+    // Verifikasi token kriptografis ke server untuk mencegah pemalsuan di console browser
+    let isMounted = true;
+    axios.get('http://localhost:5000/api/auth/me')
+      .then((res) => {
+        if (isMounted) {
+          if (res.data && res.data.user) {
+            // Sinkronisasi data user tepercaya dari database
+            localStorage.setItem('user', JSON.stringify(res.data.user));
+            setIsAuthenticated(true);
+          } else {
+            setIsAuthenticated(false);
+          }
+          setIsValidating(false);
+        }
+      })
+      .catch((err) => {
+        if (isMounted) {
+          console.warn('Verifikasi token server gagal:', err.response?.data?.message || err.message);
+          localStorage.removeItem('token');
+          localStorage.removeItem('user');
+          setIsAuthenticated(false);
+          setIsValidating(false);
+        }
+      });
+
+    return () => { isMounted = false; };
+  }, []);
+
+  if (isValidating) {
+    return (
+      <div className="min-h-screen bg-navy-dark flex flex-col items-center justify-center text-white gap-3">
+        <div className="w-10 h-10 border-4 border-accent-blue border-t-transparent rounded-full animate-spin"></div>
+        <p className="text-sm font-semibold text-gray-300">Memverifikasi Sesi Keamanan...</p>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
     return <Navigate to="/login" replace />;
   }
-  // Jika ada, izinkan masuk ke halaman yang dituju
+
   return <Layout>{children}</Layout>;
 };
 

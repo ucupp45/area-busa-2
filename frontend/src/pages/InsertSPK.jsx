@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
-import { UploadCloud, FileText, CheckCircle, AlertTriangle, Lock, Clock, Calendar, Loader, Download, Activity, Layers, Trash2, Edit2, Check, X, Filter, Search, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
+import { UploadCloud, FileText, CheckCircle, AlertTriangle, Lock, Clock, Calendar, Loader, Download, Activity, Layers, Trash2, Edit2, Check, X, Filter, Search, ArrowUpDown, ArrowUp, ArrowDown, Plus } from 'lucide-react';
 
 const InsertSPK = () => {
   const navigate = useNavigate();
@@ -19,10 +19,12 @@ const InsertSPK = () => {
   const [activeShift, setActiveShift] = useState(() => loadSession('spk_activeShift', 'Shift 1'));
   const [loading, setLoading] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
   const [spkSummary, setSpkSummary] = useState(() => loadSession('spk_summary', null));
   const [parsedData, setParsedData] = useState(() => loadSession('spk_parsedData', []));
+  const [editingHistoryId, setEditingHistoryId] = useState(() => loadSession('spk_editingHistoryId', null));
 
   // State untuk menyimpan data history dari Database
   const [historyData, setHistoryData] = useState([]);
@@ -52,6 +54,49 @@ const InsertSPK = () => {
       direction = 'desc';
     }
     setSortConfig({ key, direction });
+  };
+
+  // State untuk Modal Validasi Duplikasi WO
+  const [duplicateModalData, setDuplicateModalData] = useState(null);
+  const [manualWoWarning, setManualWoWarning] = useState(null);
+  const [checkingWo, setCheckingWo] = useState(false);
+
+  // Fungsi pengecekan WO manual terhadap editor saat ini dan database
+  const checkManualWo = async (wo) => {
+    if (!wo || !wo.trim() || wo.trim() === '-') {
+      setManualWoWarning(null);
+      return;
+    }
+    const cleanWo = wo.trim();
+    // 1. Cek di editor preview saat ini
+    const existsInPreview = parsedData.some(row => {
+      if (!row.noWo) return false;
+      return String(row.noWo).split(',').map(s => s.trim()).includes(cleanWo);
+    });
+    if (existsInPreview) {
+      setManualWoWarning({
+        noWo: cleanWo,
+        fileName: 'Editor Preview Saat Ini',
+        tanggalUpload: new Date().toISOString()
+      });
+      return;
+    }
+
+    // 2. Cek di database
+    try {
+      setCheckingWo(true);
+      const url = `http://localhost:5000/api/spk/check-wo?noWo=${encodeURIComponent(cleanWo)}${editingHistoryId ? `&excludeHistoryId=${editingHistoryId}` : ''}`;
+      const res = await axios.get(url);
+      if (res.data && res.data.isDuplicate) {
+        setManualWoWarning(res.data.existing);
+      } else {
+        setManualWoWarning(null);
+      }
+    } catch (err) {
+      console.error('Failed to check WO:', err);
+    } finally {
+      setCheckingWo(false);
+    }
   };
 
   // State untuk tambah baris manual
@@ -87,7 +132,8 @@ const InsertSPK = () => {
     sessionStorage.setItem('spk_combinedName', JSON.stringify(combinedSpkName));
     sessionStorage.setItem('spk_activeShift', JSON.stringify(activeShift));
     sessionStorage.setItem('spk_snapshots', JSON.stringify(dataSnapshots));
-  }, [parsedData, fileUploaded, spkSummary, combinedSpkName, activeShift, dataSnapshots]);
+    sessionStorage.setItem('spk_editingHistoryId', JSON.stringify(editingHistoryId));
+  }, [parsedData, fileUploaded, spkSummary, combinedSpkName, activeShift, dataSnapshots, editingHistoryId]);
 
   // State untuk custom Notification & Confirmation Modal
   const [modalConfig, setModalConfig] = useState({
@@ -227,15 +273,29 @@ const InsertSPK = () => {
 
   const handleAreaClick = () => fileInputRef.current.click();
 
-  const handleFileChange = async (e) => {
-    const file = e.target.files[0];
+  const handleFileUpload = async (file) => {
     if (!file) return;
+
+    // Validasi hanya file Excel (.xlsx atau .xls)
+    const fileName = (file.name || '').toLowerCase();
+    const isExcel = fileName.endsWith('.xlsx') || fileName.endsWith('.xls') || 
+                    file.type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' || 
+                    file.type === 'application/vnd.ms-excel';
+
+    if (!isExcel) {
+      setErrorMsg('Format file tidak didukung! Data Demand hanya menerima file Excel (.xlsx atau .xls).');
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      return;
+    }
 
     setLoading(true);
     setErrorMsg('');
 
     const formData = new FormData();
     formData.append('spk_file', file);
+    if (editingHistoryId) {
+      formData.append('editingHistoryId', editingHistoryId);
+    }
 
     try {
       const response = await axios.post('http://localhost:5000/api/spk/preview', formData, {
@@ -243,81 +303,176 @@ const InsertSPK = () => {
       });
 
       const isAddingMultiple = parsedData.length > 0;
-      let newParsedData = response.data.parsedData;
+      const incomingData = response.data.parsedData || [];
 
+      // Cek duplikasi dari respon backend dan dari editor preview saat ini
+      const backendDuplicates = response.data.duplicateWOs || [];
+      const currentWoSet = new Set();
       if (isAddingMultiple) {
-        // Simpan snapshot parsedData saat ini sebelum ditambah file baru
-        setDataSnapshots(prev => [...prev, parsedData]);
-        newParsedData = [...parsedData, ...response.data.parsedData];
-      } else {
-        setDataSnapshots([]);
+        parsedData.forEach(row => {
+          if (row.noWo) {
+            String(row.noWo).split(',').map(s => s.trim()).forEach(w => {
+              if (w && w !== '-') currentWoSet.add(w);
+            });
+          }
+        });
       }
 
-      // Urutkan parsedData agar anomali (match === false) berada di bawah
-      const sortedParsedData = newParsedData.sort((a, b) => {
-        if (a.match === b.match) return 0;
-        return a.match ? -1 : 1;
+      const editorDuplicates = [];
+      if (isAddingMultiple) {
+        incomingData.forEach(row => {
+          if (row.noWo) {
+            String(row.noWo).split(',').map(s => s.trim()).forEach(w => {
+              if (w && w !== '-' && currentWoSet.has(w)) {
+                editorDuplicates.push({
+                  noWo: w,
+                  item: row.item,
+                  customer: row.customer,
+                  qty: row.qty,
+                  existing: {
+                    fileName: 'Editor Preview Saat Ini',
+                    tanggalUpload: new Date().toISOString()
+                  }
+                });
+              }
+            });
+          }
+        });
+      }
+
+      // Gabungkan semua duplikat unik
+      const allDuplicatesMap = new Map();
+      [...backendDuplicates, ...editorDuplicates].forEach(d => {
+        if (!allDuplicatesMap.has(d.noWo)) {
+          allDuplicatesMap.set(d.noWo, d);
+        }
+      });
+      const allDuplicates = Array.from(allDuplicatesMap.values());
+      const duplicateWoSet = new Set(allDuplicates.map(d => d.noWo));
+
+      const cleanIncomingRows = incomingData.filter(row => {
+        if (!row.noWo) return true;
+        const wos = String(row.noWo).split(',').map(s => s.trim()).filter(Boolean);
+        return !wos.some(w => duplicateWoSet.has(w));
       });
 
-      setParsedData(sortedParsedData);
-
-      if (!isAddingMultiple) {
-        setCombinedSpkName(response.data.fileName);
-        setSpkSummary({
+      if (allDuplicates.length > 0) {
+        setDuplicateModalData({
+          duplicateWOs: allDuplicates,
           fileName: response.data.fileName,
-          fileUnik: response.data.savedFileName,
-          fileType: response.data.fileType,
-          totalWaktu: response.data.totalEstimasiWaktu,
-          mesin: response.data.mesinDibutuhkan,
-          manpower: response.data.manpowerDibutuhkan,
-          status: response.data.utilisasiStatus,
-          mesinTerpilih: response.data.mesinTerpilih || [],
-          totalAvailable: response.data.totalMesinAvailable || 3,
-          existingWaktu: response.data.existingWaktu || 0,
-          mesinAvailable: response.data.mesinAvailable || [],
-          shift: response.data.shift || 1,
-          summaryPerMesin: response.data.summaryPerMesin
-        });
-        setActiveShift(`Shift ${response.data.shift || 1}`);
-      } else {
-        // Jika multiple SPK, update nama gabungan jika belum dinamai gabungan
-        if (!combinedSpkName.startsWith("Gabungan_")) {
-          setCombinedSpkName(`Gabungan_SPK_${Date.now()}`);
-        }
-        recalculateSummary(sortedParsedData);
-      }
-
-      setFileUploaded(true);
-      setIsLocked(false);
-
-      // Langsung refresh dengan tinggiData dari localStorage untuk mengisi kebutuhan SB
-      try {
-        const tinggiRaw = localStorage.getItem('tinggi_short_block_data');
-        const tinggiData = tinggiRaw ? JSON.parse(tinggiRaw) : [];
-        if (tinggiData.length > 0) {
-          const refreshRes = await axios.post('http://localhost:5000/api/spk/refresh-preview', {
-            parsedData: sortedParsedData,
-            tinggiData
-          });
-          if (refreshRes.data && refreshRes.data.updatedParsedData) {
-            const refreshedSorted = refreshRes.data.updatedParsedData.sort((a, b) => {
-              if (a.match === b.match) return 0;
-              return a.match ? -1 : 1;
-            });
-            setParsedData(refreshedSorted);
-            recalculateSummary(refreshedSorted);
+          allDuplicate: cleanIncomingRows.length === 0,
+          cleanCount: cleanIncomingRows.length,
+          onConfirmSkip: () => {
+            applyLoadedData(cleanIncomingRows, response.data, isAddingMultiple);
+            setDuplicateModalData(null);
+            showModal("Sukses", `Berhasil memuat ${cleanIncomingRows.length} item baru (melewati ${allDuplicates.length} WO duplikat).`, "info");
+          },
+          onCancel: () => {
+            setDuplicateModalData(null);
           }
-        }
-      } catch (refreshErr) {
-        console.error("Auto-refresh setelah upload gagal:", refreshErr);
+        });
+        return;
       }
+
+      await applyLoadedData(incomingData, response.data, isAddingMultiple);
 
     } catch (error) {
       console.error(error);
       setErrorMsg(error.response?.data?.message || 'Gagal mengupload dan memproses file.');
     } finally {
       setLoading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
     }
+  };
+
+  const applyLoadedData = async (incomingRows, responseData, isAddingMultiple) => {
+    let newParsedData = incomingRows;
+
+    if (isAddingMultiple) {
+      setDataSnapshots(prev => [...prev, parsedData]);
+      newParsedData = [...parsedData, ...incomingRows];
+    } else {
+      setDataSnapshots([]);
+    }
+
+    const sortedParsedData = newParsedData.sort((a, b) => {
+      if (a.match === b.match) return 0;
+      return a.match ? -1 : 1;
+    });
+
+    setParsedData(sortedParsedData);
+
+    if (!isAddingMultiple) {
+      setCombinedSpkName(responseData.fileName);
+      setSpkSummary({
+        fileName: responseData.fileName,
+        fileUnik: responseData.savedFileName,
+        fileType: responseData.fileType,
+        totalWaktu: responseData.totalEstimasiWaktu,
+        mesin: responseData.mesinDibutuhkan,
+        manpower: responseData.manpowerDibutuhkan,
+        status: responseData.utilisasiStatus,
+        mesinTerpilih: responseData.mesinTerpilih || [],
+        totalAvailable: responseData.totalMesinAvailable || 3,
+        existingWaktu: responseData.existingWaktu || 0,
+        mesinAvailable: responseData.mesinAvailable || [],
+        shift: responseData.shift || 1,
+        summaryPerMesin: responseData.summaryPerMesin
+      });
+      setActiveShift(`Shift ${responseData.shift || 1}`);
+    } else {
+      if (!editingHistoryId && !combinedSpkName.startsWith("Gabungan_")) {
+        setCombinedSpkName(`Gabungan_SPK_${Date.now()}`);
+      }
+      recalculateSummary(sortedParsedData);
+    }
+
+    setFileUploaded(true);
+    setIsLocked(false);
+
+    try {
+      const tinggiRaw = localStorage.getItem('tinggi_short_block_data');
+      const tinggiData = tinggiRaw ? JSON.parse(tinggiRaw) : [];
+      if (tinggiData.length > 0) {
+        const refreshRes = await axios.post('http://localhost:5000/api/spk/refresh-preview', {
+          parsedData: sortedParsedData,
+          tinggiData
+        });
+        if (refreshRes.data && refreshRes.data.updatedParsedData) {
+          const refreshedSorted = refreshRes.data.updatedParsedData.sort((a, b) => {
+            if (a.match === b.match) return 0;
+            return a.match ? -1 : 1;
+          });
+          setParsedData(refreshedSorted);
+          recalculateSummary(refreshedSorted);
+        }
+      }
+    } catch (refreshErr) {
+      console.error("Auto-refresh setelah upload gagal:", refreshErr);
+    }
+  };
+
+  const handleFileChange = (e) => {
+    const file = e.target.files[0];
+    if (file) handleFileUpload(file);
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    setIsDragging(false);
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      handleFileUpload(e.dataTransfer.files[0]);
+    }
+  };
+
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e) => {
+    e.preventDefault();
+    setIsDragging(false);
   };
 
   // ── Helper: hitung waktu satu baris sesuai logika fisika mesin ──────────────
@@ -464,6 +619,7 @@ const InsertSPK = () => {
       }
 
       let reqMachines = Math.ceil(data.totalWaktu / kapasitasPerMesin);
+      const reqShifts = reqMachines || 1;
       if (reqMachines > maxCapacity) reqMachines = maxCapacity;
 
       if ((machineType === 'CNC' || machineType === 'Perforasi') && data.totalQty > 0) {
@@ -477,8 +633,9 @@ const InsertSPK = () => {
         reqManpower = 7; // Fixed 7 manpower
       }
 
-      const utilisasi = reqMachines > 0
-        ? (data.totalWaktu / (reqMachines * kapasitasPerMesin)) * 100
+      const effectiveCapacity = (machineType === 'Packing' ? reqShifts : reqMachines) * kapasitasPerMesin;
+      const utilisasi = effectiveCapacity > 0
+        ? (data.totalWaktu / effectiveCapacity) * 100
         : 0;
 
       let status = 'Efisien';
@@ -496,7 +653,8 @@ const InsertSPK = () => {
         ...data,
         mesinDibutuhkan: existingManual.manualMesin !== undefined ? existingManual.manualMesin : reqMachines,
         manpowerDibutuhkan: existingManual.manualManpower !== undefined ? existingManual.manualManpower : reqManpower,
-        persentaseUtilisasi: Number(utilisasi.toFixed(2)),
+        kebutuhanShift: reqShifts,
+        persentaseUtilisasi: Number(Math.min(utilisasi, 100).toFixed(2)),
         utilisasiStatus: status,
         manualMesin: existingManual.manualMesin,
         manualManpower: existingManual.manualManpower
@@ -561,6 +719,8 @@ const InsertSPK = () => {
       if (newData.length === 0) {
         setFileUploaded(false);
         setSpkSummary(null);
+        setEditingHistoryId(null);
+        sessionStorage.removeItem('spk_editingHistoryId');
       }
     });
   };
@@ -598,22 +758,97 @@ const InsertSPK = () => {
       });
 
       // Kirim newRows ke backend untuk di-grouping (seperti upload Excel)
-      const response = await axios.post('http://localhost:5000/api/spk/preview-raw', { rawRows: newRows });
+      const response = await axios.post('http://localhost:5000/api/spk/preview-raw', { 
+        rawRows: newRows,
+        editingHistoryId: editingHistoryId || null
+      });
       
       if (response.data && response.data.parsedData) {
         const groupedNewRows = response.data.parsedData;
-        const updatedData = [...parsedData, ...groupedNewRows];
+        const backendDuplicates = response.data.duplicateWOs || [];
         
+        // Cek juga terhadap editor preview saat ini
+        const currentWoSet = new Set();
+        parsedData.forEach(row => {
+          if (row.noWo) {
+            String(row.noWo).split(',').map(s => s.trim()).forEach(w => {
+              if (w && w !== '-') currentWoSet.add(w);
+            });
+          }
+        });
+
+        const editorDuplicates = [];
+        groupedNewRows.forEach(row => {
+          if (row.noWo) {
+            String(row.noWo).split(',').map(s => s.trim()).forEach(w => {
+              if (w && w !== '-' && currentWoSet.has(w)) {
+                editorDuplicates.push({
+                  noWo: w,
+                  item: row.item,
+                  customer: row.customer,
+                  qty: row.qty,
+                  existing: {
+                    fileName: 'Editor Preview Saat Ini',
+                    tanggalUpload: new Date().toISOString()
+                  }
+                });
+              }
+            });
+          }
+        });
+
+        const allDuplicatesMap = new Map();
+        [...backendDuplicates, ...editorDuplicates].forEach(d => {
+          if (!allDuplicatesMap.has(d.noWo)) {
+            allDuplicatesMap.set(d.noWo, d);
+          }
+        });
+        const allDuplicates = Array.from(allDuplicatesMap.values());
+        const duplicateWoSet = new Set(allDuplicates.map(d => d.noWo));
+
+        const cleanIncomingRows = groupedNewRows.filter(row => {
+          if (!row.noWo) return true;
+          const wos = String(row.noWo).split(',').map(s => s.trim()).filter(Boolean);
+          return !wos.some(w => duplicateWoSet.has(w));
+        });
+
+        if (allDuplicates.length > 0) {
+          setIsPasteModalOpen(false);
+          setPasteText('');
+          setDuplicateModalData({
+            duplicateWOs: allDuplicates,
+            fileName: 'Data Paste Excel',
+            allDuplicate: cleanIncomingRows.length === 0,
+            cleanCount: cleanIncomingRows.length,
+            onConfirmSkip: () => {
+              const updatedData = [...parsedData, ...cleanIncomingRows];
+              const sortedData = updatedData.sort((a, b) => {
+                if (a.match === b.match) return 0;
+                return a.match ? -1 : 1;
+              });
+              setParsedData(sortedData);
+              recalculateSummary(sortedData);
+              setDuplicateModalData(null);
+              showModal("Sukses", `Berhasil memuat ${cleanIncomingRows.length} item baru (melewati ${allDuplicates.length} WO duplikat).`, "info");
+            },
+            onCancel: () => {
+              setDuplicateModalData(null);
+            }
+          });
+          return;
+        }
+
+        const updatedData = [...parsedData, ...groupedNewRows];
         const sortedData = updatedData.sort((a, b) => {
           if (a.match === b.match) return 0;
           return a.match ? -1 : 1;
         });
         setParsedData(sortedData);
         recalculateSummary(sortedData);
+        setIsPasteModalOpen(false);
+        setPasteText('');
+        showModal("Sukses", "Data berhasil di-paste dan dikalkulasi!", "info");
       }
-      setIsPasteModalOpen(false);
-      setPasteText('');
-      showModal("Sukses", "Data berhasil di-paste dan dikalkulasi!", "info");
     } catch (err) {
       console.error("Gagal paste:", err);
       showModal("Error", "Gagal memproses data paste.", "error");
@@ -622,7 +857,7 @@ const InsertSPK = () => {
     }
   };
 
-  const handleSaveNewRow = () => {
+  const handleSaveNewRow = async () => {
     if (!newRowData.item || !newRowData.qty) {
       showModal("Peringatan", "Nama Item dan Qty harus diisi!", "warning");
       return;
@@ -635,6 +870,41 @@ const InsertSPK = () => {
     if (qtyVal <= 0) {
       showModal("Peringatan", "Nilai Qty harus lebih dari 0!", "warning");
       return;
+    }
+
+    const cleanWo = (newRowData.noWo || '').trim();
+    if (cleanWo && cleanWo !== '-') {
+      // 1. Cek duplikasi di editor preview saat ini
+      const existsInPreview = parsedData.some(row => {
+        if (!row.noWo) return false;
+        return String(row.noWo).split(',').map(s => s.trim()).includes(cleanWo);
+      });
+      if (existsInPreview) {
+        showModal(
+          "Duplikasi Nomor WO",
+          `Nomor WO "${cleanWo}" sudah ada di editor preview saat ini. Mohon gunakan nomor WO yang berbeda.`,
+          "warning"
+        );
+        return;
+      }
+
+      // 2. Cek duplikasi di database
+      try {
+        const url = `http://localhost:5000/api/spk/check-wo?noWo=${encodeURIComponent(cleanWo)}${editingHistoryId ? `&excludeHistoryId=${editingHistoryId}` : ''}`;
+        const checkRes = await axios.get(url);
+        if (checkRes.data && checkRes.data.isDuplicate) {
+          const ex = checkRes.data.existing;
+          showModal(
+            "Duplikasi Nomor WO",
+            `Nomor WO "${cleanWo}" sudah pernah diunggah sebelumnya pada file "${ex.fileName}" (${new Date(ex.tanggalUpload).toLocaleDateString('id-ID')}). Mohon gunakan nomor WO yang berbeda untuk mencegah overproduksi.`,
+            "warning"
+          );
+          setManualWoWarning(ex);
+          return;
+        }
+      } catch (e) {
+        console.error("Gagal verifikasi WO:", e);
+      }
     }
 
     // Bangun Nama Item lengkap dengan dimensinya jika ada (P x L x T)
@@ -674,6 +944,7 @@ const InsertSPK = () => {
     recalculateSummary(newData);
 
     setIsAddingRow(false);
+    setManualWoWarning(null);
     setNewRowData({
       noWo: '', spkCutting: '', customer: '', item: '',
       ukuranP: '', ukuranL: '', ukuranT: '', qtyCut: '',
@@ -694,32 +965,69 @@ const InsertSPK = () => {
       return;
     }
 
-    showModal(
-      "PERHATIAN!",
-      "Apakah Anda yakin ingin MENGUNCI dan MEMPROSES SPK ini?\n\nMohon crosscheck kembali data kuantitas bahan baku, cycle time, dan ukuran P L T untuk menghindari human error.\n\nKlik Oke jika data sudah benar.",
-      'confirm',
-      executeLock
-    );
+    // Cek apakah ada baris yang bertanda duplikat
+    const duplicateRows = parsedData.filter(row => row.isDuplicate);
+    if (duplicateRows.length > 0) {
+      showModal(
+        "Peringatan Duplikasi WO",
+        `Terdapat ${duplicateRows.length} baris yang memiliki nomor WO yang sudah pernah diunggah sebelumnya. Silakan hapus baris bertanda duplikat terlebih dahulu sebelum mengunci SPK.`,
+        "warning"
+      );
+      return;
+    }
+
+    if (editingHistoryId) {
+      showModal(
+        "PERHATIAN! SIMPAN PERUBAHAN DEMAND",
+        `Apakah Anda yakin ingin MENYIMPAN PERUBAHAN data demand pada "${combinedSpkName}"?\n\nData susulan / dadakan yang ditambahkan akan memperbarui isi SPK ini di database.\n\nKlik Oke jika data sudah sesuai.`,
+        'confirm',
+        executeLock
+      );
+    } else {
+      showModal(
+        "PERHATIAN!",
+        "Apakah Anda yakin ingin MENGUNCI dan MEMPROSES SPK ini?\n\nMohon crosscheck kembali data kuantitas bahan baku, cycle time, dan ukuran P L T untuk menghindari human error.\n\nKlik Oke jika data sudah benar.",
+        'confirm',
+        executeLock
+      );
+    }
   };
 
   const executeLock = async () => {
     try {
-      const finalFileName = combinedSpkName || spkSummary.fileName;
+      const finalFileName = combinedSpkName || spkSummary?.fileName || 'SPK_Demand.xlsx';
       // Gunakan file unik asli dari file pertama agar link download tetap berfungsi dan tidak error 404
-      const finalFileUnik = spkSummary.fileUnik;
+      const finalFileUnik = spkSummary?.fileUnik || '';
 
-      await axios.post('http://localhost:5000/api/spk/save', {
-        fileName: finalFileName,
-        fileUnik: finalFileUnik,
-        fileType: combinedSpkName.startsWith("Gabungan") ? "Multiple" : spkSummary.fileType,
-        user: 'PPC',
-        parsedData: parsedData,
-        mesinTerpilih: spkSummary.summaryPerMesin,
-        shift: spkSummary.shift
-      });
+      if (editingHistoryId) {
+        await axios.put(`http://localhost:5000/api/spk/history/${editingHistoryId}`, {
+          nama_file: finalFileName,
+          fileName: finalFileName,
+          user: 'PPC',
+          parsedData: parsedData,
+          mesinTerpilih: spkSummary?.summaryPerMesin,
+          shift: spkSummary?.shift || activeShift
+        });
 
-      setIsLocked(true);
-      showModal("Sukses", "SPK Berhasil Dikunci dan Disimpan ke Database MySQL!", 'success');
+        setIsLocked(true);
+        showModal("Sukses", `Data Demand untuk "${finalFileName}" berhasil diperbarui dengan data susulan/perubahan!`, 'success');
+      } else {
+        await axios.post('http://localhost:5000/api/spk/save', {
+          fileName: finalFileName,
+          fileUnik: finalFileUnik,
+          fileType: combinedSpkName.startsWith("Gabungan") ? "Multiple" : (spkSummary?.fileType || 'Excel'),
+          user: 'PPC',
+          parsedData: parsedData,
+          mesinTerpilih: spkSummary?.summaryPerMesin,
+          shift: spkSummary?.shift || activeShift
+        });
+
+        setIsLocked(true);
+        showModal("Sukses", "SPK Berhasil Dikunci dan Disimpan ke Database MySQL!", 'success');
+      }
+
+      setEditingHistoryId(null);
+      sessionStorage.removeItem('spk_editingHistoryId');
 
       // Refresh tabel history setelah berhasil mengunci
       fetchHistory();
@@ -736,9 +1044,114 @@ const InsertSPK = () => {
       }
 
     } catch (error) {
-      console.error("Gagal mengunci SPK:", error);
-      showModal("Gagal", "Terjadi kesalahan saat menyimpan ke database.", 'error');
+      console.error("Gagal mengunci / menyimpan SPK:", error);
+      showModal("Gagal Mengunci SPK", error.response?.data?.message || "Terjadi kesalahan saat menyimpan data ke database.", 'error');
     }
+  };
+
+  // --- FUNGSI LOAD & EDIT DATA DEMAND (DARI HISTORY KE PREVIEW EDITOR) ---
+  const loadDemandDetail = async (row) => {
+    try {
+      setLoading(true);
+      const response = await axios.get(`http://localhost:5000/api/spk/history/${row.id}`);
+      const { history, parsedData: loadedParsedData } = response.data;
+
+      // Auto-refresh loaded data dengan matriks ketinggian terbaru jika tersedia
+      let finalParsedData = loadedParsedData || [];
+      try {
+        const tinggiRaw = localStorage.getItem('tinggi_short_block_data');
+        const tinggiData = tinggiRaw ? JSON.parse(tinggiRaw) : [];
+        if (tinggiData.length > 0 && finalParsedData.length > 0) {
+          const refreshRes = await axios.post('http://localhost:5000/api/spk/refresh-preview', {
+            parsedData: finalParsedData,
+            tinggiData
+          });
+          if (refreshRes.data && refreshRes.data.updatedParsedData) {
+            finalParsedData = refreshRes.data.updatedParsedData;
+          }
+        }
+      } catch (refErr) {
+        console.warn("Refresh preview on edit loaded fallback:", refErr);
+      }
+
+      const sortedData = finalParsedData.sort((a, b) => {
+        if (a.match === b.match) return 0;
+        return a.match ? -1 : 1;
+      });
+
+      const spkShift = history?.shift ? `Shift ${history.shift}` : (row.shift ? `Shift ${row.shift}` : 'Shift 1');
+      let parsedSummaryPerMesin = null;
+      if (history?.mesin_digunakan) {
+        try {
+          parsedSummaryPerMesin = typeof history.mesin_digunakan === 'string'
+            ? JSON.parse(history.mesin_digunakan)
+            : history.mesin_digunakan;
+        } catch (e) {}
+      }
+
+      setEditingHistoryId(row.id);
+      setCombinedSpkName(history?.nama_file || row.nama_file);
+      setActiveShift(spkShift);
+      setParsedData(sortedData);
+      setFileUploaded(true);
+      setIsLocked(false);
+      setDataSnapshots([]);
+
+      setSpkSummary({
+        fileName: history?.nama_file || row.nama_file,
+        fileUnik: history?.file_unik || row.file_unik,
+        fileType: history?.file_type || 'Excel',
+        shift: spkShift,
+        summaryPerMesin: parsedSummaryPerMesin,
+        existingWaktu: 0
+      });
+
+      recalculateSummary(sortedData);
+
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      showModal(
+        "Mode Edit Data Demand Aktif",
+        `Data SPK "${row.nama_file}" (${sortedData.length} item) telah dimuat ke editor preview.\n\nAnda dapat menambahkan data susulan / dadakan lewat tombol "+ Tambah Manual", "Copas dari Excel", atau "Tambah SPK Lain", serta mengedit / menghapus item yang ada.\n\nSetelah selesai, klik tombol "Proses & Simpan Perubahan".`,
+        "info"
+      );
+    } catch (err) {
+      console.error("Gagal memuat detail SPK untuk edit:", err);
+      showModal("Error", "Gagal memuat data SPK untuk diedit.", "error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleStartEditDemand = (row) => {
+    if (fileUploaded && parsedData.length > 0 && editingHistoryId !== row.id) {
+      showModal(
+        "Konfirmasi Ganti SPK",
+        `Saat ini ada data demand "${combinedSpkName || 'SPK Aktif'}" di editor preview.\n\nApakah Anda ingin beralih dan mengedit data demand "${row.nama_file}"? (Perubahan yang belum disimpan pada SPK aktif akan dibatalkan)`,
+        "confirm",
+        () => loadDemandDetail(row)
+      );
+    } else {
+      loadDemandDetail(row);
+    }
+  };
+
+  const handleCancelEditDemand = () => {
+    showModal(
+      "Batalkan Edit Data Demand",
+      "Yakin ingin keluar dari mode edit data demand? Perubahan yang belum disimpan akan hilang.",
+      "warning",
+      () => {
+        setEditingHistoryId(null);
+        sessionStorage.removeItem('spk_editingHistoryId');
+        setFileUploaded(false);
+        setIsLocked(false);
+        setSpkSummary(null);
+        setParsedData([]);
+        setDataSnapshots([]);
+        setCombinedSpkName('');
+        if (fileInputRef.current) fileInputRef.current.value = '';
+      }
+    );
   };
 
   // --- SINKRONISASI EXISTING WAKTU SETELAH DELETE HISTORY ---
@@ -769,7 +1182,7 @@ const InsertSPK = () => {
     });
   };
 
-  // --- FUNGSI UPDATE HISTORY (GANTI NAMA) ---
+  // --- FUNGSI UPDATE HISTORY (GANTI NAMA FILE SAJA) ---
   const startEdit = (id, currentName) => {
     setEditId(id);
     setEditName(currentName);
@@ -866,7 +1279,14 @@ const InsertSPK = () => {
                   <span className="font-bold">{m.totalWaktu.toFixed(1)} mnt</span>
                 </div>
 
-                {key !== 'Packing' && (
+                {key === 'Packing' ? (
+                  <div className="flex justify-between text-xs items-center">
+                    <span className="text-gray-500">Estimasi Shift:</span>
+                    <span className="px-1.5 py-0.5 bg-blue-50 text-blue-700 font-bold rounded text-xs">
+                      {m.kebutuhanShift || 1} Shift
+                    </span>
+                  </div>
+                ) : (
                   <div className="flex justify-between text-xs items-center">
                     <span className="text-gray-500">Mesin:</span>
                     <span className="w-12 px-1 py-0.5 border border-transparent rounded text-right font-bold text-blue-600">
@@ -882,7 +1302,32 @@ const InsertSPK = () => {
                   </span>
                 </div>
 
-                {key !== 'Packing' && (
+                {key === 'Packing' ? (
+                  <div className="mt-2 pt-2 border-t border-gray-200">
+                    <div className="text-xs text-gray-500 font-semibold mb-2">Utilisasi Area Packing:</div>
+                    {(() => {
+                      const util = m.persentaseUtilisasi || 0;
+                      const isGood = util >= 80 && util <= 100;
+                      const isWarn = util >= 50 && util < 80;
+                      const bgColor = isGood ? 'bg-green-500' : isWarn ? 'bg-yellow-500' : 'bg-gray-400';
+                      const badgeBg = isGood ? 'bg-green-100 text-green-700' : isWarn ? 'bg-yellow-100 text-yellow-700' : 'bg-gray-100 text-gray-600';
+                      const shifts = m.kebutuhanShift || 1;
+                      return (
+                        <div>
+                          <div className="flex justify-between items-center mb-1">
+                            <span className="text-[10px] text-gray-500 font-medium">1 Area ({shifts} Shift)</span>
+                            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${badgeBg}`}>
+                              {util.toFixed(1)}%
+                            </span>
+                          </div>
+                          <div className="w-full bg-gray-200 rounded-full h-1.5">
+                            <div className={`h-1.5 rounded-full ${bgColor}`} style={{ width: `${Math.min(util, 100)}%` }}></div>
+                          </div>
+                        </div>
+                      );
+                    })()}
+                  </div>
+                ) : (
                   <div className="mt-2 pt-2 border-t border-gray-200">
                     <div className="text-xs text-gray-500 font-semibold mb-2">Utilisasi per Mesin:</div>
                     {machineUtilizations.length > 0 ? machineUtilizations.map((mu, idx) => {
@@ -923,27 +1368,34 @@ const InsertSPK = () => {
   return (
     <div className="flex flex-col gap-6 animate-in fade-in duration-300">
 
-      {/* HIDDEN FILE INPUT (Berlaku untuk awal upload maupun multiple upload) */}
+      {/* HIDDEN FILE INPUT (Hanya menerima Excel .xlsx, .xls) */}
       <input
         type="file"
         ref={fileInputRef}
         className="hidden"
-        accept=".xlsx,.xls,.pdf"
+        accept=".xlsx,.xls"
         onChange={handleFileChange}
       />
 
       {/* AREA UPLOAD & SUMMARY KALKULASI */}
       {!fileUploaded ? (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* Opsi 1: Upload SPK */}
+          {/* Opsi 1: Upload Data Demand */}
           <div
-            className="bg-white p-8 rounded-xl border-2 border-dashed border-accent-blue shadow-sm flex flex-col items-center justify-center text-center h-64 bg-blue-50/20 transition-all hover:bg-blue-50/40 cursor-pointer relative"
+            className={`bg-white p-8 rounded-xl border-2 border-dashed shadow-sm flex flex-col items-center justify-center text-center h-64 transition-all cursor-pointer relative ${
+              isDragging
+                ? 'border-accent-blue bg-blue-100/50 scale-[1.01]'
+                : 'border-accent-blue bg-blue-50/20 hover:bg-blue-50/40'
+            }`}
             onClick={handleAreaClick}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
           >
             {loading ? (
               <div className="flex flex-col items-center text-accent-blue">
                 <Loader size={36} className="animate-spin mb-4" />
-                <h3 className="text-lg font-bold text-navy-dark">Memproses SPK...</h3>
+                <h3 className="text-lg font-bold text-navy-dark">Memproses Data Demand...</h3>
                 <p className="text-sm text-gray-500">Sistem sedang mencocokkan data ke database cycle time</p>
               </div>
             ) : (
@@ -951,14 +1403,12 @@ const InsertSPK = () => {
                 <div className="w-16 h-16 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center mb-4">
                   <UploadCloud size={32} />
                 </div>
-                <h3 className="text-lg font-bold text-navy-dark mb-1">Upload Surat Perintah Kerja (SPK)</h3>
+                <h3 className="text-lg font-bold text-navy-dark mb-1">Upload Data Demand</h3>
                 <p className="text-sm text-gray-500 mb-4">
-                  Pilih atau Drag & Drop file
-                  <span className="font-bold text-green-600"> PDF (.pdf)</span> atau
-                  <span className="font-bold text-blue-600"> Excel (.xlsx)</span>
+                  Pilih atau Drag & Drop file <span className="font-bold text-blue-600">Excel (.xlsx, .xls)</span>
                 </p>
                 <button className="bg-accent-blue text-navy-dark px-6 py-2 rounded-lg font-bold text-sm shadow-sm hover:bg-blue-300 transition-colors">
-                  Pilih File SPK
+                  Pilih File Data Demand
                 </button>
                 {errorMsg && <p className="mt-4 text-red-500 text-sm font-semibold">{errorMsg}</p>}
               </>
@@ -1000,6 +1450,37 @@ const InsertSPK = () => {
         </div>
       ) : (
         <>
+          {editingHistoryId && (
+            <div className="bg-amber-500/10 border-2 border-amber-500/40 rounded-xl p-4 mb-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-sm animate-fade-in">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-lg bg-amber-500 text-white flex items-center justify-center shrink-0 shadow-xs">
+                  <Edit2 size={20} />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="font-black text-amber-900 text-xs tracking-wider uppercase bg-amber-200/80 px-2 py-0.5 rounded">
+                      Mode Edit Data Demand
+                    </span>
+                    <span className="text-xs text-amber-800 font-bold">
+                      ID #{editingHistoryId}
+                    </span>
+                  </div>
+                  <p className="text-xs text-amber-900 mt-1">
+                    Sedang mengedit <strong>{combinedSpkName}</strong>. Anda dapat menambahkan data susulan / dadakan lewat tombol <strong>+ Tambah Manual</strong>, <strong>Copas dari Excel</strong>, atau <strong>Tambah SPK Lain</strong>.
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 self-end sm:self-center">
+                <button
+                  onClick={handleCancelEditDemand}
+                  className="px-3.5 py-1.5 rounded-lg text-xs font-bold bg-white text-gray-700 border border-gray-300 hover:bg-gray-100 hover:text-red-600 transition-colors shadow-xs flex items-center gap-1.5"
+                >
+                  <X size={14} /> Batalkan Edit
+                </button>
+              </div>
+            </div>
+          )}
+
           <div className="bg-navy-dark text-white rounded-xl shadow-lg p-6 border border-white/10 flex flex-col md:flex-row justify-between items-center relative overflow-hidden gap-6 md:gap-0">
             <div className="absolute -right-10 -top-10 w-40 h-40 bg-accent-blue/10 rounded-full blur-2xl"></div>
 
@@ -1089,81 +1570,114 @@ const InsertSPK = () => {
       {/* PREVIEW TABEL & KUNCI SPK */}
       {fileUploaded && (
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-          <div className="p-4 border-b border-gray-200 flex flex-col md:flex-row justify-between items-center gap-4 bg-gray-50/50">
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-gray-500 font-semibold uppercase">SPK untuk:</span>
-              {isLocked ? (
-                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-bold bg-navy-dark text-white">
-                  <Clock size={13} />
-                  {spkSummary?.shift || 'Shift 1'}
-                </span>
-              ) : (
-                <div className="relative inline-flex items-center bg-navy-dark rounded-md text-white overflow-hidden">
-                  <div className="pl-3 pointer-events-none flex items-center justify-center">
+          <div className="p-3.5 sm:p-4 border-b border-gray-200 flex flex-wrap items-center justify-between gap-3 bg-gray-50/70">
+            {/* Sisi Kiri: Shift Selector & Search Input */}
+            <div className="flex flex-wrap items-center gap-3 flex-1 min-w-[280px]">
+              <div className="flex items-center gap-2 shrink-0">
+                <span className="text-xs text-gray-500 font-bold uppercase tracking-wider">SPK untuk:</span>
+                {isLocked ? (
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-navy-dark text-white shadow-xs">
                     <Clock size={13} />
+                    {spkSummary?.shift || 'Shift 1'}
+                  </span>
+                ) : (
+                  <div className="relative inline-flex items-center bg-navy-dark rounded-lg text-white overflow-hidden shadow-xs hover:bg-slate-800 transition-colors">
+                    <div className="pl-2.5 pointer-events-none flex items-center justify-center text-blue-300">
+                      <Clock size={13} />
+                    </div>
+                    <select
+                      className="pl-2 pr-6 py-1.5 text-xs font-bold bg-transparent text-white outline-none cursor-pointer appearance-none"
+                      value={spkSummary?.shift || 'Shift 1'}
+                      onChange={(e) => setSpkSummary({ ...spkSummary, shift: e.target.value })}
+                    >
+                      <option value="Shift 1" className="bg-slate-900 text-white">Shift 1</option>
+                      <option value="Shift 2" className="bg-slate-900 text-white">Shift 2</option>
+                      <option value="Shift 3" className="bg-slate-900 text-white">Shift 3</option>
+                    </select>
+                    <div className="pointer-events-none absolute right-2 flex items-center">
+                      <svg className="w-3 h-3 text-white/80" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
+                    </div>
                   </div>
-                  <select
-                    className="pl-2 pr-6 py-1.5 text-sm font-bold bg-navy-dark text-white outline-none cursor-pointer hover:bg-opacity-90 appearance-none"
-                    value={spkSummary?.shift || 'Shift 1'}
-                    onChange={(e) => setSpkSummary({ ...spkSummary, shift: e.target.value })}
-                  >
-                    <option value="Shift 1">Shift 1</option>
-                    <option value="Shift 2">Shift 2</option>
-                    <option value="Shift 3">Shift 3</option>
-                  </select>
-                  {/* Custom Arrow for select */}
-                  <div className="pointer-events-none absolute right-2 flex items-center">
-                    <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
-                  </div>
-                </div>
-              )}
-              <span className="text-xs text-gray-400 italic">(1 SPK = 1 Shift)</span>
-            </div>
-
-            <div className="w-full md:w-auto relative max-w-sm flex-1">
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <Search size={14} className="text-gray-400" />
+                )}
+                <span className="text-[11px] text-gray-400 italic hidden sm:inline">(1 SPK = 1 Shift)</span>
               </div>
-              <input
-                type="text"
-                placeholder="Cari SPK atau WO..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-9 pr-4 py-1.5 border border-gray-300 rounded-lg text-sm outline-none focus:border-accent-blue focus:ring-1 focus:ring-accent-blue transition-all"
-              />
+
+              {/* Kolom Search yang Jelas & Proporsional */}
+              <div className="relative w-56 sm:w-64 md:w-72 min-w-[200px]">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400">
+                  <Search size={14} />
+                </div>
+                <input
+                  type="text"
+                  placeholder="Cari No WO / Description..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="w-full pl-9 pr-8 py-1.5 bg-white border border-gray-300 rounded-lg text-xs font-medium text-gray-800 placeholder-gray-400 outline-none focus:border-accent-blue focus:ring-2 focus:ring-accent-blue/20 transition-all shadow-xs"
+                />
+                {searchTerm && (
+                  <button
+                    onClick={() => setSearchTerm('')}
+                    className="absolute inset-y-0 right-0 pr-2.5 flex items-center text-gray-400 hover:text-gray-600 transition-colors"
+                    title="Hapus pencarian"
+                  >
+                    <X size={13} />
+                  </button>
+                )}
+              </div>
             </div>
 
+            {/* Sisi Kanan: Action Buttons */}
             {isLocked ? (
-              <div className="flex items-center gap-2 bg-gray-100 text-gray-500 px-4 py-2 rounded-lg font-bold text-sm border border-gray-200">
-                <Lock size={16} /> Locked by PPC
+              <div className="flex items-center gap-2 bg-gray-100 text-gray-500 px-4 py-2 rounded-lg font-bold text-xs border border-gray-200">
+                <Lock size={15} /> Locked by PPC
               </div>
             ) : (
-              <div className="flex items-center gap-3">
-                <button onClick={() => {
-                  // Fungsi Undo per-file
-                  if (dataSnapshots.length > 0) {
-                    const prevData = dataSnapshots[dataSnapshots.length - 1];
-                    setParsedData(prevData);
-                    setDataSnapshots(prev => prev.slice(0, -1));
-                    recalculateSummary(prevData);
-                  } else {
-                    // Reset total ke awal jika tidak ada snapshot
-                    setFileUploaded(false);
-                    setSpkSummary(null);
-                    setParsedData([]);
-                    setDataSnapshots([]);
-                    setCombinedSpkName('');
-                  }
-                  if (fileInputRef.current) fileInputRef.current.value = '';
-                }} className="flex items-center gap-2 bg-red-100 text-red-700 px-4 py-2 rounded-lg font-bold text-sm hover:bg-red-200 transition-colors shadow-sm" title="Undo SPK terakhir yang dimasukkan">
-                  <X size={16} /> Undo
+              <div className="flex flex-wrap items-center gap-2 shrink-0">
+                {/* 1. Undo */}
+                <button
+                  onClick={() => {
+                    if (dataSnapshots.length > 0) {
+                      const prevData = dataSnapshots[dataSnapshots.length - 1];
+                      setParsedData(prevData);
+                      setDataSnapshots(prev => prev.slice(0, -1));
+                      recalculateSummary(prevData);
+                    } else {
+                      setFileUploaded(false);
+                      setSpkSummary(null);
+                      setParsedData([]);
+                      setDataSnapshots([]);
+                      setCombinedSpkName('');
+                      setEditingHistoryId(null);
+                      sessionStorage.removeItem('spk_editingHistoryId');
+                    }
+                    if (fileInputRef.current) fileInputRef.current.value = '';
+                  }}
+                  className="whitespace-nowrap inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-bold text-xs bg-red-50 text-red-700 border border-red-200 hover:bg-red-100 hover:border-red-300 transition-all active:scale-95 shadow-xs"
+                  title="Undo SPK terakhir yang dimasukkan"
+                >
+                  <X size={14} />
+                  <span>Undo</span>
                 </button>
-                <button onClick={() => setIsAddingRow(true)} className="flex items-center gap-2 bg-purple-100 text-purple-700 px-5 py-2 rounded-lg font-bold text-sm hover:bg-purple-200 transition-colors shadow-sm">
-                  <span className="text-lg leading-none">+</span> Tambah Manual
+
+                {/* 2. Tambah Manual */}
+                <button
+                  onClick={() => setIsAddingRow(true)}
+                  className="whitespace-nowrap inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-bold text-xs bg-purple-50 text-purple-700 border border-purple-200 hover:bg-purple-100 hover:border-purple-300 transition-all active:scale-95 shadow-xs"
+                >
+                  <Plus size={14} />
+                  <span>Tambah Manual</span>
                 </button>
-                <button onClick={() => setIsPasteModalOpen(true)} className="flex items-center gap-2 bg-green-100 text-green-700 px-5 py-2 rounded-lg font-bold text-sm hover:bg-green-200 transition-colors shadow-sm">
-                  <FileText size={16} /> Copas dari Excel
+
+                {/* 3. Copas dari Excel */}
+                <button
+                  onClick={() => setIsPasteModalOpen(true)}
+                  className="whitespace-nowrap inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-bold text-xs bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 hover:border-emerald-300 transition-all active:scale-95 shadow-xs"
+                >
+                  <FileText size={14} />
+                  <span>Copas dari Excel</span>
                 </button>
+
+                {/* 4. Refresh */}
                 <button
                   onClick={async () => {
                     setIsRefreshing(true);
@@ -1182,42 +1696,54 @@ const InsertSPK = () => {
                     } catch (err) {
                       console.error("Gagal refresh:", err);
                     } finally {
-                      setTimeout(() => setIsRefreshing(false), 500); // 500ms delay to ensure animation is visible
+                      setTimeout(() => setIsRefreshing(false), 500);
                     }
                   }}
                   disabled={isRefreshing}
-                  className={`flex items-center gap-2 bg-amber-100 text-amber-700 px-5 py-2 rounded-lg font-bold text-sm transition-colors shadow-sm ${isRefreshing ? 'opacity-70 cursor-not-allowed' : 'hover:bg-amber-200'}`}
+                  className={`whitespace-nowrap inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-bold text-xs bg-amber-50 text-amber-700 border border-amber-200 transition-all active:scale-95 shadow-xs ${isRefreshing ? 'opacity-70 cursor-not-allowed' : 'hover:bg-amber-100 hover:border-amber-300'}`}
                   title="Refresh data preview (sinkronkan dengan matriks ketinggian terbaru)"
                 >
-                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={isRefreshing ? 'animate-spin' : ''}><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
-                  {isRefreshing ? 'Refreshing...' : 'Refresh'}
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={isRefreshing ? 'animate-spin' : ''}><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
+                  <span>{isRefreshing ? 'Refreshing...' : 'Refresh'}</span>
                 </button>
-                <button onClick={() => fileInputRef.current?.click()} className="flex items-center gap-2 bg-blue-100 text-blue-700 px-5 py-2 rounded-lg font-bold text-sm hover:bg-blue-200 transition-colors shadow-sm">
-                  <UploadCloud size={16} /> Tambah SPK Lain
-                </button>
-                <button onClick={async () => {
-                  const hasAnomaly = parsedData.some(row => !row.match);
-                  if (hasAnomaly) {
-                    showModal(
-                      "Peringatan Anomali",
-                      "Terdapat data anomali (Perlu Input Manual) pada tabel. Silakan lengkapi atau hapus data tersebut (berada di urutan paling bawah) sebelum memproses SPK.",
-                      "warning"
-                    );
-                    return;
-                  }
 
-                  try {
-                    const response = await axios.post('http://localhost:5000/api/spk/calculate-summary', { parsedData });
-                    if (response.data) {
-                      setSummaryModalData(response.data);
-                      setIsSummaryModalOpen(true);
+                {/* 5. Tambah SPK Lain */}
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  className="whitespace-nowrap inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-bold text-xs bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100 hover:border-blue-300 transition-all active:scale-95 shadow-xs"
+                >
+                  <UploadCloud size={14} />
+                  <span>Tambah SPK Lain</span>
+                </button>
+
+                {/* 6. Proses SPK */}
+                <button
+                  onClick={async () => {
+                    const hasAnomaly = parsedData.some(row => !row.match);
+                    if (hasAnomaly) {
+                      showModal(
+                        "Peringatan Anomali",
+                        "Terdapat data anomali (Perlu Input Manual) pada tabel. Silakan lengkapi atau hapus data tersebut (berada di urutan paling bawah) sebelum memproses SPK.",
+                        "warning"
+                      );
+                      return;
                     }
-                  } catch (error) {
-                    console.error("Gagal melakukan kalkulasi:", error);
-                    showModal("Error", "Gagal memproses kalkulasi SPK.", "error");
-                  }
-                }} className="flex items-center gap-2 bg-green-600 text-white px-5 py-2 rounded-lg font-bold text-sm hover:bg-green-700 transition-colors shadow-sm">
-                  <Lock size={16} /> Proses SPK
+
+                    try {
+                      const response = await axios.post('http://localhost:5000/api/spk/calculate-summary', { parsedData });
+                      if (response.data) {
+                        setSummaryModalData(response.data);
+                        setIsSummaryModalOpen(true);
+                      }
+                    } catch (error) {
+                      console.error("Gagal melakukan kalkulasi:", error);
+                      showModal("Error", "Gagal memproses kalkulasi SPK.", "error");
+                    }
+                  }}
+                  className="whitespace-nowrap inline-flex items-center gap-1.5 px-4 py-1.5 rounded-lg font-bold text-xs bg-emerald-600 text-white hover:bg-emerald-700 transition-all active:scale-95 shadow-sm"
+                >
+                  <Lock size={14} />
+                  <span>{editingHistoryId ? 'Proses & Simpan Perubahan' : 'Proses SPK'}</span>
                 </button>
               </div>
             )}
@@ -1291,7 +1817,7 @@ const InsertSPK = () => {
                 }).map((row) => {
                   const idx = row.originalIndex;
                   return (
-                    <tr key={idx} className={`border-b border-gray-100 hover:bg-gray-50 transition-colors ${!row.match ? 'bg-yellow-50/50' : ''}`}>
+                    <tr key={idx} className={`border-b border-gray-100 hover:bg-gray-50 transition-colors ${row.isDuplicate ? 'bg-red-50/70 border-red-200' : !row.match ? 'bg-yellow-50/50' : ''}`}>
                       <td className="p-4 align-top">
                         <div className="flex flex-col gap-3">
                           {row.noWo && typeof row.noWo === 'string'
@@ -1302,6 +1828,11 @@ const InsertSPK = () => {
                                 <div key={i} className="flex flex-col">
                                   <span className="font-bold text-navy-dark whitespace-nowrap">{wo.trim()}</span>
                                   <span className="text-[11px] text-gray-500 leading-tight mt-0.5">{cust.trim()}</span>
+                                  {row.isDuplicate && (
+                                    <span className="inline-flex items-center gap-1 mt-1 text-[10px] font-bold text-red-700 bg-red-100 border border-red-200 px-1.5 py-0.5 rounded w-fit" title={`Duplikat dari: ${row.duplicateInfo?.fileName || 'SPK sebelumnya'}`}>
+                                      <AlertTriangle size={10} /> Sudah Diunggah
+                                    </span>
+                                  )}
                                 </div>
                               );
                             })
@@ -1309,6 +1840,11 @@ const InsertSPK = () => {
                               <div className="flex flex-col">
                                 <span className="font-bold text-navy-dark">{row.noWo}</span>
                                 <span className="text-[11px] text-gray-500 leading-tight mt-0.5">{row.customer}</span>
+                                {row.isDuplicate && (
+                                  <span className="inline-flex items-center gap-1 mt-1 text-[10px] font-bold text-red-700 bg-red-100 border border-red-200 px-1.5 py-0.5 rounded w-fit" title={`Duplikat dari: ${row.duplicateInfo?.fileName || 'SPK sebelumnya'}`}>
+                                    <AlertTriangle size={10} /> Sudah Diunggah
+                                  </span>
+                                )}
                               </div>
                             )
                           }
@@ -1450,8 +1986,33 @@ const InsertSPK = () => {
             <div className="p-6 overflow-y-auto grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4 text-sm">
               <div className="space-y-4">
                 <div>
-                  <label className="block text-xs font-bold text-gray-500 mb-1">No WO</label>
-                  <input type="text" className="w-full border border-gray-300 rounded-lg px-3 py-2 outline-none focus:border-accent-blue" value={newRowData.noWo} onChange={e => setNewRowData({ ...newRowData, noWo: e.target.value })} />
+                  <div className="flex justify-between items-center mb-1">
+                    <label className="block text-xs font-bold text-gray-500">No WO</label>
+                    {checkingWo && <span className="text-[10px] text-blue-500 flex items-center gap-1"><Loader size={10} className="animate-spin" /> Memeriksa...</span>}
+                  </div>
+                  <input 
+                    type="text" 
+                    className={`w-full border rounded-lg px-3 py-2 outline-none transition-colors ${manualWoWarning ? 'border-red-400 bg-red-50/30' : 'border-gray-300 focus:border-accent-blue'}`} 
+                    value={newRowData.noWo} 
+                    onChange={e => {
+                      setNewRowData({ ...newRowData, noWo: e.target.value });
+                      if (manualWoWarning) setManualWoWarning(null);
+                    }}
+                    onBlur={e => checkManualWo(e.target.value)}
+                    placeholder="Contoh: 4143297"
+                  />
+                  {manualWoWarning && (
+                    <div className="mt-1.5 p-2.5 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700 flex items-start gap-2 animate-fade-in">
+                      <AlertTriangle size={15} className="shrink-0 mt-0.5 text-red-600" />
+                      <div>
+                        <div className="font-bold text-red-800">Nomor WO sudah pernah diunggah!</div>
+                        <div className="text-[11px] text-red-600 mt-0.5">
+                          Tercatat pada file <strong>{manualWoWarning.fileName}</strong> ({manualWoWarning.tanggalUpload ? new Date(manualWoWarning.tanggalUpload).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }) : '-'}). 
+                          Mohon gunakan nomor WO lain untuk mencegah risiko overproduksi.
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-gray-500 mb-1">Customer</label>
@@ -1582,6 +2143,106 @@ const InsertSPK = () => {
         </div>
       )}
 
+      {/* MODAL PERINGATAN DUPLIKASI NOMOR WO (LOCKING VALIDATION) */}
+      {duplicateModalData && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col border border-red-100 animate-popup">
+            {/* Modal Header */}
+            <div className="p-5 bg-gradient-to-r from-red-600 to-rose-700 text-white flex justify-between items-start">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 bg-white/20 rounded-xl backdrop-blur-xs">
+                  <AlertTriangle size={24} className="text-white" />
+                </div>
+                <div>
+                  <h3 className="font-black text-lg">
+                    {duplicateModalData.allDuplicate ? "Seluruh Nomor WO Sudah Pernah Diunggah" : "Duplikasi Nomor WO Terdeteksi"}
+                  </h3>
+                  <p className="text-xs text-white/80 mt-0.5">
+                    Validasi Duplikasi Nomor WO (Pencegahan Double Upload & Overproduksi)
+                  </p>
+                </div>
+              </div>
+              <button 
+                onClick={duplicateModalData.onCancel} 
+                className="text-white/80 hover:text-white p-1 rounded-lg hover:bg-white/10 transition-colors"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-6 overflow-y-auto max-h-[60vh] flex flex-col gap-4 text-sm text-gray-700">
+              <div className="p-3.5 bg-amber-50 rounded-xl border border-amber-200 text-amber-800 text-xs leading-relaxed">
+                {duplicateModalData.allDuplicate ? (
+                  <span>
+                    Semua nomor WO pada file <strong>{duplicateModalData.fileName}</strong> ({duplicateModalData.duplicateWOs.length} item) sudah pernah diunggah ke sistem sebelumnya. Untuk mencegah risiko nomor WO terproses ganda, seluruh data file ini tidak dapat dimuat ke sistem.
+                  </span>
+                ) : (
+                  <span>
+                    Ditemukan <strong>{duplicateModalData.duplicateWOs.length} nomor WO</strong> yang sudah pernah diunggah sebelumnya pada file lain. Anda dapat memilih <strong>Lewati WO Duplikat</strong> agar sistem hanya memuat <strong>{duplicateModalData.cleanCount} item baru</strong> yang belum pernah diproses.
+                  </span>
+                )}
+              </div>
+
+              {/* Table of Duplicates */}
+              <div className="border border-gray-200 rounded-xl overflow-hidden shadow-xs">
+                <div className="px-3 py-2 bg-gray-50 border-b border-gray-200 text-xs font-bold text-gray-600 flex justify-between items-center">
+                  <span>Daftar Nomor WO yang Sudah Ada di Sistem:</span>
+                  <span className="px-2 py-0.5 bg-red-100 text-red-700 rounded-full text-[10px] font-black">
+                    {duplicateModalData.duplicateWOs.length} Duplikat
+                  </span>
+                </div>
+                <div className="max-h-52 overflow-y-auto">
+                  <table className="w-full text-left text-xs border-collapse">
+                    <thead className="bg-gray-100 text-gray-600 sticky top-0 shadow-[0_1px_0_#e5e7eb]">
+                      <tr>
+                        <th className="p-2.5 font-bold">No WO</th>
+                        <th className="p-2.5 font-bold">Nama Item</th>
+                        <th className="p-2.5 font-bold">Pernah Diunggah Pada</th>
+                        <th className="p-2.5 font-bold text-center">Tanggal</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {duplicateModalData.duplicateWOs.map((dup, idx) => (
+                        <tr key={idx} className="hover:bg-red-50/50 transition-colors">
+                          <td className="p-2.5 font-black text-red-600 font-mono">{dup.noWo}</td>
+                          <td className="p-2.5 text-gray-800 max-w-[200px] truncate" title={dup.item}>{dup.item}</td>
+                          <td className="p-2.5 font-semibold text-gray-600">{dup.existing?.fileName || '-'}</td>
+                          <td className="p-2.5 text-center text-gray-500 whitespace-nowrap">
+                            {dup.existing?.tanggalUpload 
+                              ? new Date(dup.existing.tanggalUpload).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })
+                              : '-'}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-4 bg-gray-50 border-t border-gray-200 flex justify-end items-center gap-3">
+              <button
+                onClick={duplicateModalData.onCancel}
+                className="px-4 py-2 rounded-xl text-xs font-bold text-gray-600 bg-white border border-gray-300 hover:bg-gray-100 transition-all active:scale-95 shadow-xs"
+              >
+                {duplicateModalData.allDuplicate ? "Tutup" : "Batalkan Upload"}
+              </button>
+              {!duplicateModalData.allDuplicate && duplicateModalData.onConfirmSkip && (
+                <button
+                  onClick={duplicateModalData.onConfirmSkip}
+                  className="px-5 py-2 rounded-xl text-xs font-bold text-white bg-green-600 hover:bg-green-700 transition-all active:scale-95 shadow-sm flex items-center gap-2"
+                >
+                  <Check size={14} />
+                  <span>Lewati WO Duplikat & Muat ({duplicateModalData.cleanCount} Item Baru)</span>
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* HISTORY UPLOAD DARI DATABASE (Real-time) */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden mt-4">
         <div className="p-4 border-b border-gray-200 bg-gray-50/50 flex flex-col md:flex-row justify-between items-center gap-4">
@@ -1627,7 +2288,7 @@ const InsertSPK = () => {
             </thead>
             <tbody className="text-sm text-gray-600">
               {historyData.length > 0 ? historyData.map((row) => (
-                <tr key={row.id} className="border-b border-gray-50 hover:bg-gray-50/50">
+                <tr key={row.id} className={`border-b border-gray-50 transition-colors ${editingHistoryId === row.id ? 'bg-amber-50/70 hover:bg-amber-100/50' : 'hover:bg-gray-50/50'}`}>
                   <td className="p-4">
                     {editId === row.id ? (
                       <div className="flex items-center gap-2">
@@ -1641,17 +2302,26 @@ const InsertSPK = () => {
                         />
                       </div>
                     ) : (
-                      <a
-                        href={`http://localhost:5000/uploads/${row.file_unik}`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="font-bold text-navy-dark flex items-center gap-2 hover:text-accent-blue transition-colors group w-max"
-                        title="Klik untuk mengunduh dokumen asli"
-                      >
-                        <FileText size={16} className="text-blue-400" />
-                        {row.nama_file}
-                        <Download size={14} className="opacity-0 group-hover:opacity-100 transition-opacity text-accent-blue" />
-                      </a>
+                      <div className="flex items-center gap-2">
+                        <a
+                          href={`http://localhost:5000/uploads/${row.file_unik}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="font-bold text-navy-dark flex items-center gap-2 hover:text-accent-blue transition-colors group w-max"
+                          title="Klik untuk mengunduh dokumen asli"
+                        >
+                          <FileText size={16} className="text-blue-400" />
+                          {row.nama_file}
+                          <Download size={14} className="opacity-0 group-hover:opacity-100 transition-opacity text-accent-blue" />
+                        </a>
+                        <button
+                          onClick={() => startEdit(row.id, row.nama_file)}
+                          className="text-gray-300 hover:text-blue-600 p-1 transition-colors rounded hover:bg-blue-50"
+                          title="Rename nama file saja"
+                        >
+                          <Edit2 size={12} />
+                        </button>
+                      </div>
                     )}
                   </td>
                   <td className="p-4 flex items-center gap-2 text-gray-500">
@@ -1661,15 +2331,22 @@ const InsertSPK = () => {
                   <td className="p-4 text-center font-bold">{row.total_item}</td>
                   <td className="p-4 text-center font-bold text-gray-600">Shift {row.shift || 1}</td>
                   <td className="p-4">
-                    <span className="bg-gray-100 text-gray-600 px-3 py-1 rounded-full text-xs font-bold border border-gray-200 flex items-center gap-1 w-max">
-                      <Lock size={12} /> {row.status}
-                    </span>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="bg-gray-100 text-gray-600 px-3 py-1 rounded-full text-xs font-bold border border-gray-200 flex items-center gap-1 w-max">
+                        <Lock size={12} /> {row.status}
+                      </span>
+                      {editingHistoryId === row.id && (
+                        <span className="bg-amber-100 text-amber-800 px-2.5 py-1 rounded-full text-xs font-bold border border-amber-300 animate-pulse flex items-center gap-1">
+                          <Edit2 size={11} /> Sedang Diedit
+                        </span>
+                      )}
+                    </div>
                   </td>
                   <td className="p-4 text-center">
                     <div className="flex items-center justify-center gap-2">
                       {editId === row.id ? (
                         <>
-                          <button onClick={() => saveEdit(row.id)} className="p-1.5 bg-green-100 text-green-600 rounded hover:bg-green-200 transition-colors" title="Simpan Perubahan">
+                          <button onClick={() => saveEdit(row.id)} className="p-1.5 bg-green-100 text-green-600 rounded hover:bg-green-200 transition-colors" title="Simpan Perubahan Nama File">
                             <Check size={16} />
                           </button>
                           <button onClick={() => setEditId(null)} className="p-1.5 bg-gray-100 text-gray-500 rounded hover:bg-gray-200 transition-colors" title="Batal">
@@ -1681,7 +2358,11 @@ const InsertSPK = () => {
                           <button onClick={() => navigate(`/dashboard-terakhir?history_id=${row.id}`)} className="p-1.5 bg-green-50 text-green-600 rounded hover:bg-green-100 transition-colors" title="Lihat Dashboard SPK">
                             <Activity size={16} />
                           </button>
-                          <button onClick={() => startEdit(row.id, row.nama_file)} className="p-1.5 bg-blue-50 text-blue-500 rounded hover:bg-blue-100 transition-colors" title="Ganti Nama File">
+                          <button
+                            onClick={() => handleStartEditDemand(row)}
+                            className={`p-1.5 rounded transition-colors ${editingHistoryId === row.id ? 'bg-amber-500 text-white shadow-xs' : 'bg-blue-50 text-blue-500 hover:bg-blue-100'}`}
+                            title="Edit Data Demand (Tambah Data Susulan / Dadakan)"
+                          >
                             <Edit2 size={16} />
                           </button>
                           <button onClick={() => handleDeleteHistory(row.id)} className="p-1.5 bg-red-50 text-red-500 rounded hover:bg-red-100 transition-colors" title="Hapus SPK">
@@ -1773,7 +2454,9 @@ const InsertSPK = () => {
             {/* Modal Header */}
             <div className="p-6 border-b border-gray-200 bg-gray-50 flex justify-between items-center">
               <div>
-                <h2 className="text-xl font-bold text-navy-dark">Hasil Kalkulasi SPK</h2>
+                <h2 className="text-xl font-bold text-navy-dark">
+                  {editingHistoryId ? 'Hasil Kalkulasi Perubahan Data Demand' : 'Hasil Kalkulasi SPK'}
+                </h2>
                 <p className="text-sm text-gray-500 mt-1">Rincian estimasi waktu dan utilisasi per mesin</p>
               </div>
               <button
@@ -2072,7 +2755,7 @@ const InsertSPK = () => {
                 <div className="mb-6 animate-fade-in">
                   {/* Summary Card Packing */}
                   {summaryModalData.packing.summary && (
-                    <div className="grid grid-cols-1 md:grid-cols-5 gap-4 bg-blue-50/50 p-4 rounded-xl border border-blue-100 mb-6">
+                    <div className="grid grid-cols-1 md:grid-cols-6 gap-4 bg-blue-50/50 p-4 rounded-xl border border-blue-100 mb-6">
                       <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-100 flex flex-col justify-center items-center text-center">
                         <span className="text-xs text-gray-500 font-semibold mb-1">Total Freq Packing</span>
                         <span className="text-xl font-black text-purple-600">
@@ -2086,6 +2769,12 @@ const InsertSPK = () => {
                       <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-100 flex flex-col justify-center items-center text-center">
                         <span className="text-xs text-gray-500 font-semibold mb-1">Kapasitas 1 Shift</span>
                         <span className="text-xl font-black text-gray-700">{summaryModalData.packing.summary.kapasitas1Shift} <span className="text-sm font-normal">Mnt</span></span>
+                      </div>
+                      <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-100 flex flex-col justify-center items-center text-center">
+                        <span className="text-xs text-gray-500 font-semibold mb-1">Estimasi Kebutuhan Shift</span>
+                        <span className="text-xl font-black text-blue-600">
+                          {summaryModalData.packing.summary.kebutuhanShift || summaryModalData.packing.summary.estimasiBukaanMesin || 1} <span className="text-sm font-normal">Shift</span>
+                        </span>
                       </div>
                       <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-100 flex flex-col justify-center items-center text-center">
                         <span className="text-xs text-gray-500 font-semibold mb-1">Manpower Packing</span>
@@ -2159,7 +2848,7 @@ const InsertSPK = () => {
                 }}
                 className="px-5 py-2.5 rounded-lg text-sm font-bold text-white bg-green-600 hover:bg-green-700 transition-colors shadow-sm flex items-center gap-2"
               >
-                <CheckCircle size={16} /> Kunci & Simpan SPK
+                <CheckCircle size={16} /> {editingHistoryId ? 'Simpan Perubahan Data Demand' : 'Kunci & Simpan SPK'}
               </button>
             </div>
 

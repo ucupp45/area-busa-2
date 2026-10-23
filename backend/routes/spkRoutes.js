@@ -2,33 +2,38 @@ const express = require('express');
 const router = express.Router();
 const upload = require('../middlewares/upload');
 const spkController = require('../controllers/spkController');
+const { verifyToken, requireRole } = require('../middlewares/authMiddleware');
 
-// Route untuk preview (Baca Excel/PDF tanpa simpan)
-router.post('/preview', upload.single('spk_file'), spkController.previewSPK);
+// Semua route SPK memerlukan autentikasi
+router.use(verifyToken);
 
-// Route untuk refresh preview dengan data matriks terbaru
-router.post('/refresh-preview', spkController.refreshPreview);
+// Route untuk preview (Baca Excel/PDF tanpa simpan) - PPC & Superadmin
+router.post('/preview', requireRole('PPC', 'Superadmin'), upload.single('spk_file'), spkController.previewSPK);
 
-// Route untuk preview raw data (Pasted dari Excel)
-router.post('/preview-raw', spkController.previewRaw);
+// Route untuk refresh preview dengan data matriks terbaru - PPC & Superadmin
+router.post('/refresh-preview', requireRole('PPC', 'Superadmin'), spkController.refreshPreview);
 
-// Route untuk kalkulasi single row (Manual SPK)
-router.post('/calculate-single', spkController.calculateSingleRow);
+// Route untuk preview raw data (Pasted dari Excel) - PPC & Superadmin
+router.post('/preview-raw', requireRole('PPC', 'Superadmin'), spkController.previewRaw);
 
-// Route untuk kalkulasi akhir semua mesin (Vertikal, Horizontal, Carousel)
-router.post('/calculate-summary', spkController.calculateSummary);
+// Route untuk kalkulasi single row (Manual SPK) - PPC & Superadmin
+router.post('/calculate-single', requireRole('PPC', 'Superadmin'), spkController.calculateSingleRow);
 
-// Route untuk menyimpan data yang sudah divalidasi ke Database
-router.post('/save', spkController.saveSPK);
+// Route untuk kalkulasi akhir semua mesin (Vertikal, Horizontal, Carousel) - PPC & Superadmin
+router.post('/calculate-summary', requireRole('PPC', 'Superadmin'), spkController.calculateSummary);
 
-// Rute baru untuk mengambil riwayat SPK
+// Route untuk menyimpan data yang sudah divalidasi ke Database - PPC & Superadmin
+router.post('/save', requireRole('PPC', 'Superadmin'), spkController.saveSPK);
+
+// Rute untuk mengambil riwayat SPK
 router.get('/history', spkController.getHistory);
+router.get('/history/:id', spkController.getHistoryDetail);
 
 // Rute untuk mendapatkan CT (Cycle Time) berdasar nama item
 router.post('/get-ct', spkController.getCT);
 
-// Rute untuk sinkronisasi tinggi short block matrix ke DB
-router.post('/update-tinggi-matrix', spkController.updateTinggiMatrix);
+// Rute untuk sinkronisasi tinggi short block matrix ke DB - PPC & Superadmin
+router.post('/update-tinggi-matrix', requireRole('PPC', 'Superadmin'), spkController.updateTinggiMatrix);
 
 // Rute baru untuk sinkronisasi existingWaktu
 router.get('/existing-waktu', spkController.getExistingWaktu);
@@ -43,12 +48,12 @@ router.get('/efisiensi', spkController.getEfisiensi);
 const dashboardController = require('../controllers/dashboardController');
 router.get('/dashboard', dashboardController.getDashboardData);
 
-// Rute untuk Update (Ganti Nama) dan Delete History
-router.put('/history/:id', spkController.updateSPK);
-router.delete('/history/:id', spkController.deleteSPK);
+// Rute untuk Update (Ganti Nama / Edit Demand) dan Delete History - PPC & Superadmin
+router.put('/history/:id', requireRole('PPC', 'Superadmin'), spkController.updateSPK);
+router.delete('/history/:id', requireRole('PPC', 'Superadmin'), spkController.deleteSPK);
 
 // Rute untuk Update Catatan Kualitas Produksi
-router.post('/quality', spkController.updateQuality);
+router.post('/quality', requireRole('Operator', 'Supervisor', 'PPC', 'Superadmin'), spkController.updateQuality);
 
 // Rute untuk Chart Histori 7 Hari
 router.get('/chart', spkController.getChartData);
@@ -58,5 +63,8 @@ router.post('/calculate-oee', spkController.calculateOEE);
 
 // Rute untuk mengambil data WO aktif (belum terpenuhi)
 router.get('/wo/active', spkController.getActiveWOs);
+
+// Rute untuk validasi duplikasi nomor WO
+router.get('/check-wo', spkController.checkWO);
 
 module.exports = router;

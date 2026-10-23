@@ -892,7 +892,7 @@ exports.getAllSisaPotong = async (req, res) => {
 
 // CREATE Sisa Potong Manual
 exports.createSisaPotongManual = async (req, res) => {
-    const role = (req.headers['x-user-role'] || req.body?.userRole || '').trim();
+    const role = (req.user?.role || '').trim();
     if (role.toLowerCase() !== 'superadmin') {
         return res.status(403).json({ success: false, message: 'Akses ditolak: Hanya Superadmin yang berwenang menambah data sisa potong.' });
     }
@@ -921,7 +921,7 @@ exports.createSisaPotongManual = async (req, res) => {
 
 // UPDATE Sisa Potong
 exports.updateSisaPotong = async (req, res) => {
-    const role = (req.headers['x-user-role'] || req.body?.userRole || '').trim();
+    const role = (req.user?.role || '').trim();
     if (role.toLowerCase() !== 'superadmin') {
         return res.status(403).json({ success: false, message: 'Akses ditolak: Hanya Superadmin yang berwenang mengupdate data sisa potong.' });
     }
@@ -948,7 +948,7 @@ exports.updateSisaPotong = async (req, res) => {
 
 // DELETE Sisa Potong
 exports.deleteSisaPotong = async (req, res) => {
-    const role = (req.headers['x-user-role'] || req.body?.userRole || '').trim();
+    const role = (req.user?.role || '').trim();
     if (role.toLowerCase() !== 'superadmin') {
         return res.status(403).json({ success: false, message: 'Akses ditolak: Hanya Superadmin yang berwenang menghapus data sisa potong.' });
     }

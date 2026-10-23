@@ -19,6 +19,7 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads'))); // Mengizi
 // =====================================
 // DAFTAR ROUTES KITA
 // =====================================
+const authRoutes = require('./routes/authRoutes');
 const spkRoutes     = require('./routes/spkRoutes');
 const machineRoutes = require('./routes/machineRoutes');
 const mesinManpowerRoutes = require('./routes/mesinManpowerRoutes');
@@ -26,6 +27,7 @@ const matrixRoutes = require('./routes/matrixRoutes');
 const realisasiRoutes = require('./routes/realisasiRoutes');
 
 // ── 3. MOUNT ROUTER ──────────────────────────────────────────
+app.use('/api/auth', authRoutes);
 app.use('/api/spk',     spkRoutes);
 app.use('/api/machines', machineRoutes);
 app.use('/api/mesin-manpower', mesinManpowerRoutes);

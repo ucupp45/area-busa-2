@@ -1,37 +1,39 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { User, Lock, ArrowRight, AlertCircle } from 'lucide-react';
+import { User, Lock, ArrowRight, AlertCircle, Loader2 } from 'lucide-react';
+import axios from 'axios';
 
 const Login = () => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
 
-  // ==========================================
-  // HARDCODED CREDENTIALS (Tanpa Database/Registrasi)
-  // ==========================================
-  const validUsers = [
-    { username: 'ppc_admin', password: 'password123', role: 'PPC', name: 'Yusup Kurniawan' },
-    { username: 'operator1', password: 'password123', role: 'Operator', name: 'Operator V1' },
-    { username: 'superadmin', password: 'superadmin123', role: 'Superadmin', name: 'Super Administrator' }
-  ];
-
-  const handleLogin = (e) => {
+  const handleLogin = async (e) => {
     e.preventDefault();
     setError('');
+    setIsLoading(true);
 
-    // Cek kecocokan data
-    const user = validUsers.find(
-      (u) => u.username === username && u.password === password
-    );
+    try {
+      const response = await axios.post('http://localhost:5000/api/auth/login', {
+        username: username.trim(),
+        password
+      });
 
-    if (user) {
-      // Simpan sesi login ke Local Storage browser
-      localStorage.setItem('user', JSON.stringify(user));
-      navigate('/'); // Arahkan ke Dashboard
-    } else {
-      setError('Username atau Password salah!');
+      if (response.data && response.data.token) {
+        // Simpan token JWT dan info profil user ke localStorage
+        localStorage.setItem('token', response.data.token);
+        localStorage.setItem('user', JSON.stringify(response.data.user));
+        navigate('/'); // Arahkan ke Dashboard
+      } else {
+        setError('Respons server tidak valid. Silakan coba lagi.');
+      }
+    } catch (err) {
+      const msg = err.response?.data?.message || 'Gagal terhubung ke server. Pastikan backend aktif.';
+      setError(msg);
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -89,9 +91,18 @@ const Login = () => {
 
             <button
               type="submit"
-              className="mt-4 bg-navy-dark hover:bg-blue-900 text-white font-bold py-2.5 rounded-lg transition-colors flex justify-center items-center gap-2"
+              disabled={isLoading}
+              className="mt-4 bg-navy-dark hover:bg-blue-900 disabled:opacity-60 text-white font-bold py-2.5 rounded-lg transition-colors flex justify-center items-center gap-2 cursor-pointer disabled:cursor-not-allowed"
             >
-              Login <ArrowRight size={18} />
+              {isLoading ? (
+                <>
+                  <Loader2 size={18} className="animate-spin" /> Memproses...
+                </>
+              ) : (
+                <>
+                  Login <ArrowRight size={18} />
+                </>
+              )}
             </button>
           </form>
 

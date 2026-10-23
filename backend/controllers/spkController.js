@@ -5,6 +5,110 @@ const pdfParse = require('pdf-parse'); // v1.1.1 — mengekspor langsung sebagai
 const db = require('../config/db');
 
 // ============================================================
+// HELPER: AMBIL SELURUH NOMOR WO YANG PERNAH DIUNGGAH DI DATABASE
+// ============================================================
+async function getExistingWOs(excludeHistoryId = null) {
+    let query = `
+        SELECT s.no_wo, s.wo_details, s.nama_item, s.qty, h.id as history_id, h.nama_file, h.tanggal_upload
+        FROM spk_items s
+        JOIN upload_history h ON s.history_id = h.id
+    `;
+    const params = [];
+    if (excludeHistoryId) {
+        query += ` WHERE h.id != ?`;
+        params.push(excludeHistoryId);
+    }
+    const [rows] = await db.query(query, params);
+
+    const woMap = new Map();
+    for (const row of rows) {
+        if (row.wo_details) {
+            try {
+                const details = typeof row.wo_details === 'string' ? JSON.parse(row.wo_details) : row.wo_details;
+                if (Array.isArray(details)) {
+                    for (const d of details) {
+                        const w = String(d.wo || '').trim();
+                        if (w && w !== '-' && !woMap.has(w)) {
+                            woMap.set(w, {
+                                noWo: w,
+                                historyId: row.history_id,
+                                fileName: row.nama_file,
+                                tanggalUpload: row.tanggal_upload,
+                                namaItem: row.nama_item,
+                                qty: d.qty_cutting || row.qty
+                            });
+                        }
+                    }
+                }
+            } catch (e) {}
+        }
+        if (row.no_wo) {
+            const parts = String(row.no_wo).split(',').map(s => s.trim()).filter(Boolean);
+            for (const w of parts) {
+                if (w && w !== '-' && !woMap.has(w)) {
+                    woMap.set(w, {
+                        noWo: w,
+                        historyId: row.history_id,
+                        fileName: row.nama_file,
+                        tanggalUpload: row.tanggal_upload,
+                        namaItem: row.nama_item,
+                        qty: row.qty
+                    });
+                }
+            }
+        }
+    }
+    return woMap;
+}
+
+function extractWOsFromItem(item) {
+    const wos = new Set();
+    if (item.woDetails) {
+        try {
+            const details = typeof item.woDetails === 'string' ? JSON.parse(item.woDetails) : item.woDetails;
+            if (Array.isArray(details)) {
+                for (const d of details) {
+                    const w = String(d.wo || '').trim();
+                    if (w && w !== '-') wos.add(w);
+                }
+            }
+        } catch (e) {}
+    }
+    if (item.noWo) {
+        const parts = String(item.noWo).split(',').map(s => s.trim()).filter(Boolean);
+        for (const w of parts) {
+            if (w && w !== '-') wos.add(w);
+        }
+    }
+    return Array.from(wos);
+}
+
+// ============================================================
+// CONTROLLER: CHECK SINGLE WO DUPLICATION
+// ============================================================
+exports.checkWO = async (req, res) => {
+    try {
+        const { noWo, excludeHistoryId } = req.query;
+        if (!noWo || !String(noWo).trim()) {
+            return res.json({ isDuplicate: false });
+        }
+        const trimmedWo = String(noWo).trim();
+        const existingMap = await getExistingWOs(excludeHistoryId ? Number(excludeHistoryId) : null);
+
+        if (existingMap.has(trimmedWo)) {
+            return res.json({
+                isDuplicate: true,
+                existing: existingMap.get(trimmedWo)
+            });
+        }
+        return res.json({ isDuplicate: false });
+    } catch (error) {
+        console.error('[ERROR] checkWO:', error);
+        res.status(500).json({ message: 'Gagal memeriksa nomor WO', error: error.message });
+    }
+};
+
+// ============================================================
 // FUNGSI PARSING PDF SPK (Tetap dipertahankan sbg fallback)
 // ============================================================
 function parseSPKPdf(rawText) {
@@ -150,7 +254,7 @@ function parseSPKExcel(filePath) {
 // ============================================================
 // FUNGSI PENCOCOKAN & KALKULASI (digunakan oleh Excel & PDF)
 // ============================================================
-async function matchAndCalculate(rawRows) {
+async function matchAndCalculate(rawRows, existingWOMap = null) {
     const [matrixData] = await db.query('SELECT * FROM cycle_time_matrix');
 
     let parsedData = [];
@@ -341,6 +445,18 @@ async function matchAndCalculate(rawRows) {
         summaryPerMesin['Packing'].totalQty += group.totalQty;
         summaryPerMesin['Packing'].totalFrekuensi = (summaryPerMesin['Packing'].totalFrekuensi || 0) + packingFrekuensi;
 
+        let isDuplicate = false;
+        let duplicateInfo = null;
+        if (existingWOMap) {
+            for (const wo of joinedWos) {
+                if (existingWOMap.has(wo)) {
+                    isDuplicate = true;
+                    duplicateInfo = existingWOMap.get(wo);
+                    break;
+                }
+            }
+        }
+
         parsedData.push({
             noWo: joinedWos.join(', '),
             woDetails: JSON.stringify(group.woDetails),
@@ -373,7 +489,9 @@ async function matchAndCalculate(rawRows) {
             packing_frekuensi: packingFrekuensi,
             packing_varians: packingVarians,
             packing_ct: packingCt,
-            packing_summary: packingSummary
+            packing_summary: packingSummary,
+            isDuplicate,
+            duplicateInfo
         });
     }
 
@@ -381,7 +499,29 @@ async function matchAndCalculate(rawRows) {
     Object.values(summaryPerMesin).forEach(s => totalEstimasiWaktu += s.totalWaktu);
     totalEstimasiWaktu = Number(totalEstimasiWaktu.toFixed(2));
 
-    return { parsedData, totalEstimasiWaktu, summaryPerMesin };
+    const duplicateWOs = [];
+    if (existingWOMap) {
+        const seenDuplicates = new Set();
+        for (const row of parsedData) {
+            if (row.isDuplicate && row.duplicateInfo) {
+                const wos = extractWOsFromItem(row);
+                for (const wo of wos) {
+                    if (existingWOMap.has(wo) && !seenDuplicates.has(wo)) {
+                        seenDuplicates.add(wo);
+                        duplicateWOs.push({
+                            noWo: wo,
+                            item: row.item,
+                            customer: row.customer,
+                            qty: row.qty,
+                            existing: existingWOMap.get(wo)
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    return { parsedData, totalEstimasiWaktu, summaryPerMesin, duplicateWOs };
 }
 
 // ============================================================
@@ -418,7 +558,7 @@ exports.getCT = async (req, res) => {
 // ============================================================
 exports.previewRaw = async (req, res) => {
     try {
-        const { rawRows } = req.body;
+        const { rawRows, editingHistoryId } = req.body;
         if (!rawRows || !Array.isArray(rawRows)) {
             return res.status(400).json({ message: 'Data row tidak valid.' });
         }
@@ -429,7 +569,8 @@ exports.previewRaw = async (req, res) => {
             manpowerMap[row.tipe_mesin] = row;
         }
 
-        const { parsedData, totalEstimasiWaktu, summaryPerMesin } = await matchAndCalculate(rawRows);
+        const existingWOMap = await getExistingWOs(editingHistoryId ? Number(editingHistoryId) : null);
+        const { parsedData, totalEstimasiWaktu, summaryPerMesin, duplicateWOs } = await matchAndCalculate(rawRows, existingWOMap);
 
         const kapasitasPerMesin = 420;
 
@@ -443,9 +584,13 @@ exports.previewRaw = async (req, res) => {
             } else if (machineType === 'CNC' || machineType === 'Perforasi') {
                 maxCapacity = 1;
                 manpowerPerMachine = 2;
+            } else if (machineType === 'Packing') {
+                maxCapacity = 1;
+                manpowerPerMachine = 7;
             }
 
             let reqMachines = Math.ceil(data.totalWaktu / kapasitasPerMesin);
+            const reqShifts = reqMachines || 1;
             if (reqMachines > maxCapacity) reqMachines = maxCapacity;
 
             if ((machineType === 'CNC' || machineType === 'Perforasi') && data.totalQty > 0) {
@@ -454,8 +599,14 @@ exports.previewRaw = async (req, res) => {
 
             let reqManpower = reqMachines * manpowerPerMachine;
 
-            const utilisasi = reqMachines > 0
-                ? (data.totalWaktu / (reqMachines * kapasitasPerMesin)) * 100
+            if (machineType === 'Packing') {
+                reqMachines = 1; // 1 physical area
+                reqManpower = 7; // Fixed 7 manpower per shift
+            }
+
+            const effectiveCapacity = (machineType === 'Packing' ? reqShifts : reqMachines) * kapasitasPerMesin;
+            const utilisasi = effectiveCapacity > 0
+                ? (data.totalWaktu / effectiveCapacity) * 100
                 : 0;
 
             let status = 'Efisien';
@@ -470,7 +621,8 @@ exports.previewRaw = async (req, res) => {
                 ...data,
                 mesinDibutuhkan: reqMachines,
                 manpowerDibutuhkan: reqManpower,
-                persentaseUtilisasi: Number(utilisasi.toFixed(2)),
+                kebutuhanShift: reqShifts,
+                persentaseUtilisasi: Number(Math.min(utilisasi, 100).toFixed(2)),
                 utilisasiStatus: status
             };
         }
@@ -478,7 +630,9 @@ exports.previewRaw = async (req, res) => {
         res.json({
             parsedData,
             summaryPerMesin,
-            totalEstimasiWaktu
+            totalEstimasiWaktu,
+            duplicateWOs: duplicateWOs || [],
+            hasDuplicates: duplicateWOs && duplicateWOs.length > 0
         });
 
     } catch (error) {
@@ -524,7 +678,9 @@ exports.previewSPK = async (req, res) => {
             manpowerMap[row.tipe_mesin] = row;
         }
 
-        const { parsedData, totalEstimasiWaktu, summaryPerMesin } = await matchAndCalculate(rawRows);
+        const editingHistoryId = req.body.editingHistoryId ? Number(req.body.editingHistoryId) : null;
+        const existingWOMap = await getExistingWOs(editingHistoryId);
+        const { parsedData, totalEstimasiWaktu, summaryPerMesin, duplicateWOs } = await matchAndCalculate(rawRows, existingWOMap);
 
         const kapasitasPerMesin = 420; // Sesuaikan dengan durasi shift (7 jam)
 
@@ -539,10 +695,14 @@ exports.previewSPK = async (req, res) => {
             } else if (machineType === 'CNC' || machineType === 'Perforasi') {
                 maxCapacity = 1;
                 manpowerPerMachine = 2;
+            } else if (machineType === 'Packing') {
+                maxCapacity = 1;
+                manpowerPerMachine = 7;
             }
 
-            // Estimasi mesin dibutuhkan
+            // Estimasi mesin / shift dibutuhkan
             let reqMachines = Math.ceil(data.totalWaktu / kapasitasPerMesin);
+            const reqShifts = reqMachines || 1;
             if (reqMachines > maxCapacity) reqMachines = maxCapacity;
 
             // Jika mesin CNC/Perforasi CT-nya 0 (sementara), hitung mesin = 1 jika ada Qty
@@ -552,8 +712,14 @@ exports.previewSPK = async (req, res) => {
 
             let reqManpower = reqMachines * manpowerPerMachine;
 
-            const utilisasi = reqMachines > 0
-                ? (data.totalWaktu / (reqMachines * kapasitasPerMesin)) * 100
+            if (machineType === 'Packing') {
+                reqMachines = 1; // 1 physical area
+                reqManpower = 7; // Fixed 7 manpower per shift
+            }
+
+            const effectiveCapacity = (machineType === 'Packing' ? reqShifts : reqMachines) * kapasitasPerMesin;
+            const utilisasi = effectiveCapacity > 0
+                ? (data.totalWaktu / effectiveCapacity) * 100
                 : 0;
 
             let status = 'Efisien';
@@ -569,7 +735,8 @@ exports.previewSPK = async (req, res) => {
                 ...data,
                 mesinDibutuhkan: reqMachines,
                 manpowerDibutuhkan: reqManpower,
-                persentaseUtilisasi: Number(utilisasi.toFixed(2)),
+                kebutuhanShift: reqShifts,
+                persentaseUtilisasi: Number(Math.min(utilisasi, 100).toFixed(2)),
                 utilisasiStatus: status
             };
         }
@@ -640,6 +807,8 @@ exports.previewSPK = async (req, res) => {
             mesinAvailable: mesinAvailable.map(m => ({ id: m.mesin_id, status: m.status, oee: m.oee })),
             mesinMaintenance: mesinMaintenance.map(m => m.mesin_id),
             totalMesinAvailable: mesinAvailable.length,
+            duplicateWOs: duplicateWOs || [],
+            hasDuplicates: duplicateWOs && duplicateWOs.length > 0
         });
 
     } catch (error) {
@@ -671,6 +840,33 @@ exports.saveSPK = async (req, res) => {
         const typeFile = fileType || 'Manual';
         const unikFile = fileUnik || `manual-${Date.now()}`;
         const mesinJson = mesinTerpilih ? JSON.stringify(mesinTerpilih) : JSON.stringify([]);
+
+        // Validasi Duplikasi Nomor WO (Server-Side Locking)
+        const existingWOMap = await getExistingWOs(null);
+        const duplicateList = [];
+        if (parsedData && Array.isArray(parsedData)) {
+            for (const item of parsedData) {
+                const wos = extractWOsFromItem(item);
+                for (const wo of wos) {
+                    if (existingWOMap.has(wo)) {
+                        duplicateList.push({
+                            noWo: wo,
+                            item: item.item,
+                            existing: existingWOMap.get(wo)
+                        });
+                    }
+                }
+            }
+        }
+
+        if (duplicateList.length > 0) {
+            const sample = duplicateList.slice(0, 3).map(d => `${d.noWo} (pada ${d.existing.fileName})`).join(', ');
+            return res.status(400).json({
+                message: `Gagal mengunci SPK: Ditemukan ${duplicateList.length} nomor WO yang sudah pernah diunggah sebelumnya (${sample}${duplicateList.length > 3 ? '...' : ''}). Untuk mencegah overproduksi, nomor WO ini tidak boleh diproses ganda.`,
+                duplicateWOs: duplicateList
+            });
+        }
+
         const [historyResult] = await db.query(
             `INSERT INTO upload_history (nama_file, file_unik, tipe_file, diupload_oleh, total_item, status, mesin_digunakan, shift) 
              VALUES (?, ?, ?, ?, ?, 'Locked', ?, ?)`,
@@ -884,17 +1080,171 @@ exports.updateQuality = async (req, res) => {
 };
 
 // ============================================================
-// CONTROLLER: UPDATE NAMA FILE SPK
+// CONTROLLER: AMBIL DETAIL HISTORY SPK (Untuk Edit Data Demand)
+// ============================================================
+exports.getHistoryDetail = async (req, res) => {
+    const { id } = req.params;
+    try {
+        const [historyRows] = await db.query('SELECT * FROM upload_history WHERE id = ?', [id]);
+        if (historyRows.length === 0) {
+            return res.status(404).json({ message: 'Data history SPK tidak ditemukan' });
+        }
+        const history = historyRows[0];
+
+        const [items] = await db.query('SELECT * FROM spk_items WHERE history_id = ? ORDER BY id ASC', [id]);
+
+        const parsedData = items.map(item => {
+            const qty = Number(item.qty) || 0;
+            const waktu = Number(item.estimasi_waktu_menit) || 0;
+            const sb = item.prediksi_sb !== null && item.prediksi_sb !== undefined ? Number(item.prediksi_sb) : null;
+            let ct = 0;
+            if (item.tipe_mesin === 'Vertikal' && sb && sb > 0) {
+                ct = Number((waktu / sb).toFixed(2));
+            } else if (qty > 0) {
+                ct = Number((waktu / qty).toFixed(2));
+            }
+
+            let woDetails = null;
+            if (item.wo_details) {
+                try {
+                    woDetails = typeof item.wo_details === 'string' ? JSON.parse(item.wo_details) : item.wo_details;
+                } catch (e) {
+                    woDetails = null;
+                }
+            }
+
+            return {
+                id: item.id,
+                noWo: item.no_wo || '-',
+                customer: item.customer || '-',
+                item: item.nama_item || '',
+                qty: qty,
+                qtyBB: qty,
+                qtyCut: item.qty_cutting !== null ? Number(item.qty_cutting) : qty,
+                ukuranP: item.ukuran_p !== null ? Number(item.ukuran_p) : 0,
+                ukuranL: item.ukuran_l !== null ? Number(item.ukuran_l) : 0,
+                ukuranT: item.ukuran_t !== null ? Number(item.ukuran_t) : 0,
+                bahanBakuP: item.bahan_baku_p !== null ? Number(item.bahan_baku_p) : (item.ukuran_p !== null ? Number(item.ukuran_p) : 0),
+                bahanBakuL: item.bahan_baku_l !== null ? Number(item.bahan_baku_l) : (item.ukuran_l !== null ? Number(item.ukuran_l) : 0),
+                bahanBakuT: item.bahan_baku_t !== null ? Number(item.bahan_baku_t) : (item.ukuran_t !== null ? Number(item.ukuran_t) : 0),
+                keterangan: item.keterangan || '',
+                ct: ct,
+                waktu: waktu,
+                mesinTujuan: item.tipe_mesin || 'Vertikal',
+                prediksi_sb: sb,
+                tinggi_balokan: item.tinggi_balokan !== null ? Number(item.tinggi_balokan) : null,
+                match: Boolean(item.match_db),
+                spkCutting: item.spk_cutting || '',
+                woDetails: woDetails
+            };
+        });
+
+        res.json({
+            history,
+            parsedData
+        });
+    } catch (error) {
+        console.error('[ERROR] getHistoryDetail:', error);
+        res.status(500).json({ message: 'Gagal mengambil detail data demand SPK', error: error.message });
+    }
+};
+
+// ============================================================
+// CONTROLLER: UPDATE NAMA FILE / DATA DEMAND SPK
 // ============================================================
 exports.updateSPK = async (req, res) => {
     const { id } = req.params;
-    const { nama_file } = req.body;
+    const { nama_file, fileName, shift, user, parsedData, mesinTerpilih } = req.body;
     try {
-        await db.query('UPDATE upload_history SET nama_file = ? WHERE id = ?', [nama_file, id]);
-        res.json({ message: 'Nama SPK berhasil diperbarui!' });
+        const finalName = fileName || nama_file;
+
+        if (parsedData && Array.isArray(parsedData)) {
+            // Pengecekan Locking WO Duplikasi (kecuali item milik history ini sendiri)
+            const existingWOMap = await getExistingWOs(Number(id));
+            const duplicateList = [];
+            for (const item of parsedData) {
+                const wos = extractWOsFromItem(item);
+                for (const wo of wos) {
+                    if (existingWOMap.has(wo)) {
+                        duplicateList.push({
+                            noWo: wo,
+                            item: item.item,
+                            existing: existingWOMap.get(wo)
+                        });
+                    }
+                }
+            }
+
+            if (duplicateList.length > 0) {
+                const sample = duplicateList.slice(0, 3).map(d => `${d.noWo} (pada ${d.existing.fileName})`).join(', ');
+                return res.status(400).json({
+                    message: `Gagal memperbarui SPK: Ditemukan ${duplicateList.length} nomor WO yang sudah pernah diunggah pada file lain (${sample}${duplicateList.length > 3 ? '...' : ''}).`,
+                    duplicateWOs: duplicateList
+                });
+            }
+
+            let shiftInt = 1;
+            if (typeof shift === 'number') {
+                shiftInt = shift;
+            } else if (typeof shift === 'string') {
+                const match = shift.match(/\d+/);
+                if (match) shiftInt = parseInt(match[0], 10);
+            }
+
+            const mesinJson = mesinTerpilih ? JSON.stringify(mesinTerpilih) : null;
+
+            // 1. Update data header upload_history
+            await db.query(
+                `UPDATE upload_history 
+                 SET nama_file = ?, total_item = ?, mesin_digunakan = COALESCE(?, mesin_digunakan), shift = ?
+                 WHERE id = ?`,
+                [finalName, parsedData.length, mesinJson, shiftInt, id]
+            );
+
+            // 2. Hapus detail item lama
+            await db.query('DELETE FROM spk_items WHERE history_id = ?', [id]);
+
+            // 3. Masukkan item baru/update
+            const itemsData = parsedData.map(item => [
+                id,
+                item.noWo || '-',
+                item.customer || '-',
+                item.item || '',
+                item.qty || 0,
+                item.waktu || 0,
+                item.match ? 1 : 0,
+                item.spkCutting || null,
+                item.ukuranP || null,
+                item.ukuranL || null,
+                item.ukuranT || null,
+                item.qtyCut || null,
+                item.bahanBakuP || null,
+                item.bahanBakuL || null,
+                item.bahanBakuT || null,
+                item.keterangan || null,
+                item.mesinTujuan || null,
+                item.tinggi_balokan || null,
+                item.prediksi_sb || null,
+                item.woDetails ? (typeof item.woDetails === 'object' ? JSON.stringify(item.woDetails) : item.woDetails) : null
+            ]);
+
+            if (itemsData.length > 0) {
+                await db.query(
+                    `INSERT INTO spk_items (history_id, no_wo, customer, nama_item, qty, estimasi_waktu_menit, match_db, spk_cutting, ukuran_p, ukuran_l, ukuran_t, qty_cutting, bahan_baku_p, bahan_baku_l, bahan_baku_t, keterangan, tipe_mesin, tinggi_balokan, prediksi_sb, wo_details) 
+                     VALUES ?`,
+                    [itemsData]
+                );
+            }
+
+            return res.json({ message: 'Data Demand SPK berhasil diperbarui!', historyId: id });
+        } else {
+            // Hanya ganti nama file (Legacy)
+            await db.query('UPDATE upload_history SET nama_file = ? WHERE id = ?', [finalName, id]);
+            return res.json({ message: 'Nama SPK berhasil diperbarui!' });
+        }
     } catch (error) {
         console.error('[ERROR] updateSPK:', error);
-        res.status(500).json({ message: 'Gagal memperbarui nama SPK' });
+        res.status(500).json({ message: 'Gagal memperbarui data SPK', error: error.message });
     }
 };
 
@@ -913,6 +1263,7 @@ exports.deleteSPK = async (req, res) => {
             }
         }
 
+        await db.query('DELETE FROM spk_items WHERE history_id = ?', [id]);
         await db.query('DELETE FROM upload_history WHERE id = ?', [id]);
         res.json({ message: 'History SPK dan file fisik berhasil dihapus!' });
     } catch (error) {
@@ -1444,7 +1795,9 @@ exports.calculateSummary = async (req, res) => {
         const utilCarousel = estBukaanCarousel > 0 ? (totalWaktuCarousel / (estBukaanCarousel * kapasitas1Shift)) * 100 : 0;
         const estOperatorCarousel = estBukaanCarousel * 1; // 1 orang per mesin carousel
 
-        const utilPacking = totalWaktuPacking > 0 ? (totalWaktuPacking / kapasitas1Shift) * 100 : 0;
+        const estBukaanPacking = Math.ceil(totalWaktuPacking / kapasitas1Shift) || 1;
+        const totalKapasitasPacking = estBukaanPacking * kapasitas1Shift;
+        const utilPacking = totalWaktuPacking > 0 ? (totalWaktuPacking / totalKapasitasPacking) * 100 : 0;
 
         res.json({
             vertikal: {
@@ -1488,9 +1841,10 @@ exports.calculateSummary = async (req, res) => {
                     totalFrekuensi: totalFrekuensiPacking,
                     totalWaktu: totalWaktuPacking.toFixed(2),
                     kapasitas1Shift: kapasitas1Shift,
-                    estimasiBukaanMesin: 1, // Fixed area
+                    estimasiBukaanMesin: estBukaanPacking,
+                    kebutuhanShift: estBukaanPacking,
                     mesinTersedia: 1,
-                    utilisasiMesin: utilPacking.toFixed(2),
+                    utilisasiMesin: Math.min(utilPacking, 100).toFixed(2),
                     estimasiOperator: 7 // Fixed 7 manpower
                 }
             }
