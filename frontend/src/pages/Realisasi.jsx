@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { ClipboardCheck, List, PlusCircle, Save, Loader, Eye, X, ArrowUpDown, ArrowUp, ArrowDown, Download, Trash2, Plus, Edit, Camera, ScanLine, AlertCircle } from 'lucide-react';
-import * as XLSX from 'xlsx';
+import ExcelJS from 'exceljs';
 import { useSettings } from '../context/SettingsContext';
 import DocumentScannerModal from '../components/DocumentScannerModal';
 
@@ -269,7 +269,7 @@ const Realisasi = () => {
 
   const processedData = getProcessedData();
 
-  const handleExportExcel = () => {
+  const handleExportExcel = async () => {
     if (processedData.length === 0) {
       showNotification('Tidak ada data untuk diexport', 'error');
       return;
@@ -332,10 +332,26 @@ const Realisasi = () => {
       }
     });
 
-    const worksheet = XLSX.utils.json_to_sheet(exportData);
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, "Realisasi Produksi");
-    XLSX.writeFile(workbook, "Data_Realisasi_Produksi.xlsx");
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet("Realisasi Produksi");
+
+    if (exportData.length > 0) {
+      worksheet.columns = Object.keys(exportData[0]).map(key => ({
+        header: key,
+        key: key,
+        width: Math.max(key.length + 5, 15)
+      }));
+      exportData.forEach(row => worksheet.addRow(row));
+    }
+
+    const buffer = await workbook.xlsx.writeBuffer();
+    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = "Data_Realisasi_Produksi.xlsx";
+    a.click();
+    window.URL.revokeObjectURL(url);
   };
 
   const handleChange = (e) => {

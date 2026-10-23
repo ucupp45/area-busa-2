@@ -29,6 +29,7 @@ yarn-error.log*
 backend/uploads/*
 !backend/uploads/.gitkeep
 !backend/uploads/temp/
+backend/uploads/temp/*
 !backend/uploads/temp/.gitkeep
 
 # Sensitive Database Backups & Transaction Dumps

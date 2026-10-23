@@ -1,4 +1,5 @@
-const xlsx = require('xlsx');
+const ExcelJS = require('exceljs');
+const { SaxesParser } = require('saxes');
 const fs = require('fs');
 const path = require('path');
 const pdfParse = require('pdf-parse'); // v1.1.1 — mengekspor langsung sebagai fungsi
@@ -201,12 +202,136 @@ function parseSPKPdf(rawText) {
 
 
 // ============================================================
-// FUNGSI PARSING EXCEL SPK (Membaca RAW DATA ERP)
+// HELPER: PARSING SPREADSHEETML 2003 XML (.xls) SECURELY
 // ============================================================
-function parseSPKExcel(filePath) {
-    const workbook = xlsx.readFile(filePath);
-    const sheetName = workbook.SheetNames[0];
-    const sheetData = xlsx.utils.sheet_to_json(workbook.Sheets[sheetName]);
+function parseSpreadsheetMLXml(filePath) {
+    const xmlContent = fs.readFileSync(filePath, 'utf8');
+    const parser = new SaxesParser();
+    const rows = [];
+    let currentRow = null;
+    let currentCell = null;
+    let currentData = null;
+    let inData = false;
+
+    parser.on('opentag', tag => {
+        const name = tag.name.replace(/^.*:/, '');
+        if (name === 'Row') {
+            currentRow = [];
+        } else if (name === 'Cell') {
+            currentCell = { value: '' };
+        } else if (name === 'Data') {
+            inData = true;
+            currentData = '';
+        }
+    });
+
+    parser.on('text', text => {
+        if (inData) {
+            currentData += text;
+        }
+    });
+
+    parser.on('closetag', tag => {
+        const name = tag.name.replace(/^.*:/, '');
+        if (name === 'Data') {
+            inData = false;
+            if (currentCell) currentCell.value = currentData.trim();
+        } else if (name === 'Cell') {
+            if (currentRow && currentCell) currentRow.push(currentCell.value);
+            currentCell = null;
+        } else if (name === 'Row') {
+            if (currentRow && currentRow.length > 0) rows.push(currentRow);
+            currentRow = null;
+        }
+    });
+
+    parser.write(xmlContent).close();
+
+    if (rows.length < 2) return [];
+
+    const headers = rows[0].map(h => String(h).trim());
+    const sheetData = [];
+
+    for (let r = 1; r < rows.length; r++) {
+        const rowCells = rows[r];
+        const rowObj = Object.create(null);
+        let hasVal = false;
+        headers.forEach((h, idx) => {
+            if (h && h !== '__proto__' && h !== 'constructor' && h !== 'prototype') {
+                const cellVal = rowCells[idx] !== undefined ? rowCells[idx] : '';
+                rowObj[h] = cellVal;
+                if (cellVal !== '') hasVal = true;
+            }
+        });
+        if (hasVal) sheetData.push(rowObj);
+    }
+
+    return sheetData;
+}
+
+// ============================================================
+// HELPER: PARSING MODERN XLSX WITH EXCELJS SECURELY
+// ============================================================
+async function parseXLSXWithExcelJS(filePath) {
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.readFile(filePath);
+    const worksheet = workbook.worksheets[0];
+    if (!worksheet) return [];
+
+    const headers = [];
+    const headerRow = worksheet.getRow(1);
+    headerRow.eachCell((cell, colNumber) => {
+        const val = cell.value !== null && cell.value !== undefined ? String(cell.value).trim() : '';
+        headers[colNumber] = val;
+    });
+
+    const sheetData = [];
+    for (let r = 2; r <= worksheet.rowCount; r++) {
+        const row = worksheet.getRow(r);
+        let hasValue = false;
+        const rowData = Object.create(null);
+        row.eachCell((cell, colNumber) => {
+            const header = headers[colNumber];
+            if (header && header !== '__proto__' && header !== 'constructor' && header !== 'prototype') {
+                let cellVal = cell.value;
+                if (cellVal && typeof cellVal === 'object') {
+                    if ('result' in cellVal) cellVal = cellVal.result;
+                    else if ('text' in cellVal) cellVal = cellVal.text;
+                }
+                rowData[header] = cellVal;
+                hasValue = true;
+            }
+        });
+        if (hasValue) {
+            sheetData.push(rowData);
+        }
+    }
+    return sheetData;
+}
+
+// ============================================================
+// FUNGSI PARSING EXCEL SPK (Membaca RAW DATA ERP)
+// Menggunakan parser modern (ExcelJS + Saxes) bebas Prototype Pollution & ReDoS
+// ============================================================
+async function parseSPKExcel(filePath) {
+    const ext = path.extname(filePath).toLowerCase();
+    let sheetData = [];
+
+    if (ext === '.xlsx') {
+        sheetData = await parseXLSXWithExcelJS(filePath);
+    } else if (ext === '.xls') {
+        const fd = fs.openSync(filePath, 'r');
+        const headerBuf = Buffer.alloc(16);
+        fs.readSync(fd, headerBuf, 0, 16, 0);
+        fs.closeSync(fd);
+
+        const isXml = headerBuf.toString('utf8').trim().startsWith('<?xml');
+        if (isXml) {
+            sheetData = parseSpreadsheetMLXml(filePath);
+        } else {
+            throw new Error('Format binary XLS legacy tidak didukung, silakan simpan sebagai .xlsx');
+        }
+    }
 
     const rows = sheetData.map(row => {
         let p = parseFloat(row['Panjang'] || row['P']) || 0;
@@ -657,7 +782,7 @@ exports.previewSPK = async (req, res) => {
         let parsedShift = 1;
 
         if (ext === '.xlsx' || ext === '.xls') {
-            const parsedRes = parseSPKExcel(filePath);
+            const parsedRes = await parseSPKExcel(filePath);
             rawRows = parsedRes.rows;
             parsedShift = parsedRes.shift;
         } else {
