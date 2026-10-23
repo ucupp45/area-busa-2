@@ -138,7 +138,7 @@ exports.getMachineHealth = async (req, res) => {
     res.json({ tanggal: today, shift: currentShift, machines: result });
   } catch (err) {
     console.error('[ERROR] getMachineHealth:', err);
-    res.status(500).json({ message: 'Gagal mengambil data health mesin', error: err.message });
+    res.status(500).json({ success: false, message: 'Gagal mengambil data health mesin.' });
   }
 };
 
@@ -229,7 +229,7 @@ exports.updateDowntime = async (req, res) => {
     res.json({ message: 'Downtime berhasil diupdate', oee: calc.oee, status: newStatus });
   } catch (err) {
     console.error('[ERROR] updateDowntime:', err);
-    res.status(500).json({ message: 'Gagal update downtime', error: err.message });
+    res.status(500).json({ success: false, message: 'Gagal update downtime mesin.' });
   }
 };
 

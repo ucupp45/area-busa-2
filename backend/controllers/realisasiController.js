@@ -189,7 +189,7 @@ exports.createRealisasi = async (req, res) => {
     } catch (error) {
         await connection.rollback();
         console.error('[ERROR] createRealisasi:', error);
-        res.status(500).json({ message: 'Gagal menyimpan data realisasi', error: error.message });
+        res.status(500).json({ success: false, message: 'Gagal menyimpan data realisasi.' });
     } finally {
         connection.release();
     }
@@ -477,7 +477,7 @@ exports.updateRealisasi = async (req, res) => {
     } catch (error) {
         await connection.rollback();
         console.error('[ERROR] updateRealisasi:', error);
-        res.status(500).json({ message: 'Gagal mengupdate data realisasi', error: error.message });
+        res.status(500).json({ success: false, message: 'Gagal mengupdate data realisasi.' });
     } finally {
         connection.release();
     }
@@ -517,7 +517,7 @@ exports.deleteRealisasi = async (req, res) => {
         res.json({ success: true, message: 'Data realisasi berhasil dihapus!' });
     } catch (error) {
         console.error('[ERROR] deleteRealisasi:', error);
-        res.status(500).json({ success: false, message: 'Gagal menghapus data realisasi', error: error.message });
+        res.status(500).json({ success: false, message: 'Gagal menghapus data realisasi.' });
     }
 };
 
@@ -660,7 +660,7 @@ exports.getHasilRealisasiVertikal = async (req, res) => {
         res.json({ success: true, data: results });
     } catch (error) {
         console.error('[ERROR] getHasilRealisasiVertikal:', error);
-        res.status(500).json({ success: false, message: 'Gagal mengambil data hasil realisasi vertikal', error: error.message });
+        res.status(500).json({ success: false, message: 'Gagal mengambil data hasil realisasi vertikal.' });
     }
 };
 
@@ -922,7 +922,7 @@ exports.getHasilRealisasiHorizontal = async (req, res) => {
         res.json({ success: true, data: results.sort((a, b) => b._raw.id - a._raw.id) });
     } catch (error) {
         console.error('[ERROR] getHasilRealisasiHorizontal:', error);
-        res.status(500).json({ success: false, message: 'Gagal mengambil data hasil realisasi horizontal', error: error.message });
+        res.status(500).json({ success: false, message: 'Gagal mengambil data hasil realisasi horizontal.' });
     }
 };
 

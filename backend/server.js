@@ -113,10 +113,18 @@ app.use((err, req, res, next) => {
             });
         }
 
-        console.error('[SERVER ERROR]:', err.message || err);
-        return res.status(err.status || 400).json({
+        const statusCode = err.status || 500;
+        console.error(`[SERVER ERROR ${statusCode}]:`, err.stack || err.message || err);
+
+        // Jangan pernah bocorkan detail internal database atau stack trace pada error 500
+        const isClientError = statusCode >= 400 && statusCode < 500;
+        const safeMessage = isClientError
+            ? (err.message || 'Permintaan tidak valid.')
+            : 'Terjadi kesalahan internal pada server saat memproses permintaan.';
+
+        return res.status(statusCode).json({
             success: false,
-            message: err.message || 'Terjadi kesalahan pada server saat memproses permintaan.'
+            message: safeMessage
         });
     }
     next();

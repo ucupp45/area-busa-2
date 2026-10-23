@@ -106,7 +106,7 @@ exports.checkWO = async (req, res) => {
         return res.json({ isDuplicate: false });
     } catch (error) {
         console.error('[ERROR] checkWO:', error);
-        res.status(500).json({ message: 'Gagal memeriksa nomor WO', error: error.message });
+        res.status(500).json({ success: false, message: 'Gagal memeriksa nomor WO.' });
     }
 };
 
@@ -763,7 +763,7 @@ exports.previewRaw = async (req, res) => {
 
     } catch (error) {
         console.error('[ERROR] previewRaw:', error);
-        res.status(500).json({ message: 'Terjadi kesalahan saat memproses data paste', error: error.message });
+        res.status(500).json({ success: false, message: 'Terjadi kesalahan saat memproses data paste.' });
     }
 };
 
@@ -942,7 +942,7 @@ exports.previewSPK = async (req, res) => {
             fs.unlinkSync(filePath);
         }
         console.error('[ERROR] previewSPK:', error);
-        res.status(500).json({ message: 'Terjadi kesalahan saat memproses SPK', error: error.message });
+        res.status(500).json({ success: false, message: 'Terjadi kesalahan saat memproses SPK.' });
     }
 };
 
@@ -1081,7 +1081,7 @@ exports.saveSPK = async (req, res) => {
         res.json({ message: 'SPK berhasil dikunci dan disimpan ke database!', historyId });
     } catch (error) {
         console.error('[ERROR] saveSPK:', error);
-        res.status(500).json({ message: 'Gagal menyimpan SPK ke database', error: error.message });
+        res.status(500).json({ success: false, message: 'Gagal menyimpan SPK ke database.' });
     }
 };
 
@@ -1317,7 +1317,7 @@ exports.getHistoryDetail = async (req, res) => {
         });
     } catch (error) {
         console.error('[ERROR] getHistoryDetail:', error);
-        res.status(500).json({ message: 'Gagal mengambil detail data demand SPK', error: error.message });
+        res.status(500).json({ success: false, message: 'Gagal mengambil detail data demand SPK.' });
     }
 };
 
@@ -1449,7 +1449,7 @@ exports.updateSPK = async (req, res) => {
         }
     } catch (error) {
         console.error('[ERROR] updateSPK:', error);
-        res.status(500).json({ message: 'Gagal memperbarui data SPK', error: error.message });
+        res.status(500).json({ success: false, message: 'Gagal memperbarui data SPK.' });
     }
 };
 
@@ -2193,7 +2193,7 @@ exports.updateTinggiMatrix = async (req, res) => {
         res.json({ message: 'Tinggi matrix updated successfully' });
     } catch (error) {
         console.error('Failed to update tinggi matrix:', error);
-        res.status(500).json({ error: 'Failed to update database' });
+        res.status(500).json({ success: false, message: 'Gagal memperbarui data tinggi matrix.' });
     }
 };
 

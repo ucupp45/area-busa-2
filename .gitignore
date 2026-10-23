@@ -37,3 +37,8 @@ backend/backups/*
 !backend/backups/.gitkeep
 *.sql
 *.dump
+
+# Legacy / Scratch Developer Scripts
+scripts_history/
+*/scripts_history/
+

@@ -59,6 +59,6 @@ exports.getAuditLogs = async (req, res) => {
         });
     } catch (error) {
         console.error('[ERROR] getAuditLogs:', error);
-        res.status(500).json({ success: false, message: 'Gagal mengambil riwayat audit log', error: error.message });
+        res.status(500).json({ success: false, message: 'Gagal mengambil riwayat audit log.' });
     }
 };

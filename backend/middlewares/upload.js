@@ -125,7 +125,7 @@ function validateExcelFile(req, res, next) {
             try { fs.unlinkSync(filePath); } catch (e) {}
         }
         console.error('[UPLOAD VALIDATION ERROR]:', err);
-        return res.status(500).json({ message: 'Gagal memvalidasi integritas file upload', error: err.message });
+        return res.status(500).json({ success: false, message: 'Gagal memvalidasi integritas file upload.' });
     }
 }
 

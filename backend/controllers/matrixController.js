@@ -6,7 +6,8 @@ exports.getAllMatrix = async (req, res) => {
         const [rows] = await db.query('SELECT * FROM cycle_time_matrix ORDER BY tipe_mesin, varians, nama_item');
         res.json(rows);
     } catch (error) {
-        res.status(500).json({ message: 'Gagal mengambil data matriks', error: error.message });
+        console.error('[ERROR] getAllMatrix:', error);
+        res.status(500).json({ success: false, message: 'Gagal mengambil data matriks.' });
     }
 };
 
@@ -20,9 +21,10 @@ exports.addMatrixItem = async (req, res) => {
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             [nama_item, varians, tipe_mesin, cycle_time_menit, ct_c1 || null, ct_c2 || null, ct_ptu || null, ct_pma || null, ct_pmu || null, ct_c3 || null, tinggi_balokan_standar || null]
         );
-        res.status(201).json({ message: 'Item berhasil ditambahkan' });
+        res.status(201).json({ success: true, message: 'Item berhasil ditambahkan' });
     } catch (error) {
-        res.status(500).json({ message: 'Gagal menambahkan item', error: error.message });
+        console.error('[ERROR] addMatrixItem:', error);
+        res.status(500).json({ success: false, message: 'Gagal menambahkan item ke matriks.' });
     }
 };
 
@@ -59,9 +61,10 @@ exports.updateMatrixVarians = async (req, res) => {
             );
         }
 
-        res.json({ message: 'Varians berhasil diperbarui' });
+        res.json({ success: true, message: 'Varians berhasil diperbarui' });
     } catch (error) {
-        res.status(500).json({ message: 'Gagal memperbarui varians', error: error.message });
+        console.error('[ERROR] updateMatrixVarians:', error);
+        res.status(500).json({ success: false, message: 'Gagal memperbarui varians matriks.' });
     }
 };
 
@@ -72,9 +75,10 @@ exports.updateMatrixItem = async (req, res) => {
             'UPDATE cycle_time_matrix SET nama_item = ? WHERE tipe_mesin = ? AND varians = ? AND nama_item = ?',
             [new_nama_item, tipe_mesin, varians, old_nama_item]
         );
-        res.json({ message: 'Item berhasil diperbarui' });
+        res.json({ success: true, message: 'Item berhasil diperbarui' });
     } catch (error) {
-        res.status(500).json({ message: 'Gagal memperbarui item', error: error.message });
+        console.error('[ERROR] updateMatrixItem:', error);
+        res.status(500).json({ success: false, message: 'Gagal memperbarui item matriks.' });
     }
 };
 
@@ -91,9 +95,10 @@ exports.deleteMatrixVarians = async (req, res) => {
             details: { tipe_mesin, varians, deleted_count: existing[0]?.count || 0 }
         });
 
-        res.json({ message: 'Varians berhasil dihapus' });
+        res.json({ success: true, message: 'Varians berhasil dihapus' });
     } catch (error) {
-        res.status(500).json({ message: 'Gagal menghapus varians', error: error.message });
+        console.error('[ERROR] deleteMatrixVarians:', error);
+        res.status(500).json({ success: false, message: 'Gagal menghapus varians matriks.' });
     }
 };
 
@@ -118,9 +123,10 @@ exports.deleteMatrixItem = async (req, res) => {
             }
         });
 
-        res.json({ message: 'Item berhasil dihapus' });
+        res.json({ success: true, message: 'Item berhasil dihapus' });
     } catch (error) {
-        res.status(500).json({ message: 'Gagal menghapus item', error: error.message });
+        console.error('[ERROR] deleteMatrixItem:', error);
+        res.status(500).json({ success: false, message: 'Gagal menghapus item matriks.' });
     }
 };
 
@@ -136,9 +142,11 @@ exports.deleteMatrixItemByName = async (req, res) => {
             details: { nama_item, varians, tipe_mesin }
         });
 
-        res.json({ message: 'Item berhasil dihapus' });
+        res.json({ success: true, message: 'Item berhasil dihapus' });
     } catch (error) {
-        res.status(500).json({ message: 'Gagal menghapus item', error: error.message });
+        console.error('[ERROR] deleteMatrixItemByName:', error);
+        res.status(500).json({ success: false, message: 'Gagal menghapus item matriks.' });
     }
 };
+
 
