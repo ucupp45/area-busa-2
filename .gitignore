@@ -42,3 +42,11 @@ backend/backups/*
 scripts_history/
 */scripts_history/
 
+# Local Documentation & Architecture Files
+docs/
+trd_erd_flowchart.md
+*.docx
+*.pdf
+generate_report_docx.py
+backend/verify_checklist.js
+
