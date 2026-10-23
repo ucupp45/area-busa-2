@@ -1273,6 +1273,45 @@ exports.deleteSPK = async (req, res) => {
 };
 
 // ============================================================
+// CONTROLLER: DOWNLOAD DOKUMEN SPK TERAUTENTIKASI
+// GET /api/spk/download/:id
+// ============================================================
+exports.downloadSPK = async (req, res) => {
+    const { id } = req.params;
+    try {
+        const [rows] = await db.query(
+            'SELECT id, nama_file, file_unik FROM upload_history WHERE id = ? LIMIT 1',
+            [id]
+        );
+
+        if (!rows || rows.length === 0) {
+            return res.status(404).json({ success: false, message: 'Data riwayat SPK tidak ditemukan.' });
+        }
+
+        const { nama_file, file_unik } = rows[0];
+
+        if (!file_unik) {
+            return res.status(404).json({ success: false, message: 'File dokumen fisik tidak terdaftar pada riwayat ini.' });
+        }
+
+        // Sanitasi nama file unik untuk mencegah Path Traversal
+        const safeFileName = path.basename(file_unik);
+        const filePath = path.join(__dirname, '../uploads', safeFileName);
+
+        if (!fs.existsSync(filePath)) {
+            return res.status(404).json({ success: false, message: 'File fisik dokumen tidak ditemukan di server penyimpanan.' });
+        }
+
+        // Nama file saat diunduh oleh user
+        const downloadName = (nama_file && nama_file.trim()) ? nama_file : safeFileName;
+        return res.download(filePath, downloadName);
+    } catch (error) {
+        console.error('[ERROR] downloadSPK:', error);
+        return res.status(500).json({ success: false, message: 'Terjadi kesalahan saat mengunduh dokumen SPK.' });
+    }
+};
+
+// ============================================================
 // CONTROLLER: AMBIL DATA HISTORI CHART (7 HARI TERAKHIR)
 // ============================================================
 exports.getChartData = async (req, res) => {

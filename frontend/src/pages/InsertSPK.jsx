@@ -2304,11 +2304,11 @@ const InsertSPK = () => {
                     ) : (
                       <div className="flex items-center gap-2">
                         <a
-                          href={`http://localhost:5000/uploads/${row.file_unik}`}
+                          href={`http://localhost:5000/api/spk/download/${row.id}?token=${encodeURIComponent(localStorage.getItem('token') || '')}`}
                           target="_blank"
                           rel="noreferrer"
                           className="font-bold text-navy-dark flex items-center gap-2 hover:text-accent-blue transition-colors group w-max"
-                          title="Klik untuk mengunduh dokumen asli"
+                          title="Klik untuk mengunduh dokumen asli (Terproteksi)"
                         >
                           <FileText size={16} className="text-blue-400" />
                           {row.nama_file}

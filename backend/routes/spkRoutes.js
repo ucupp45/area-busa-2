@@ -29,6 +29,9 @@ router.post('/save', requireRole('PPC', 'Superadmin'), spkController.saveSPK);
 router.get('/history', spkController.getHistory);
 router.get('/history/:id', spkController.getHistoryDetail);
 
+// Rute untuk mengunduh dokumen fisik SPK secara aman dan terautentikasi
+router.get('/download/:id', requireRole('PPC', 'Superadmin', 'Supervisor', 'Operator'), spkController.downloadSPK);
+
 // Rute untuk mendapatkan CT (Cycle Time) berdasar nama item
 router.post('/get-ct', spkController.getCT);
 
