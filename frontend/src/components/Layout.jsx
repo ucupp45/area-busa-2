@@ -126,11 +126,28 @@ const Layout = ({ children }) => {
         </button>
 
         <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
-          <div className="h-16 flex-shrink-0 flex items-center justify-center border-b border-white/10 px-4">
+          <div className="h-16 flex-shrink-0 flex items-center justify-center border-b border-white/10 px-3">
             {!isSidebarCollapsed ? (
-              <h1 className="text-xl font-bold tracking-wider text-accent-blue whitespace-nowrap overflow-hidden text-center">AREA BUSA 2</h1>
+              <div className="flex items-center gap-2.5 overflow-hidden">
+                <img 
+                  src="/royal-corp-logo.jpg" 
+                  alt="Royal Corp Logo" 
+                  className="w-9 h-9 rounded-lg object-contain bg-white p-0.5 shadow-sm border border-white/20 shrink-0" 
+                />
+                <div className="flex flex-col text-left leading-tight overflow-hidden">
+                  <span className="text-base font-black tracking-wider text-accent-blue truncate">OPTIFOAM</span>
+                  <span className="text-[10px] font-bold text-gray-300 tracking-wider uppercase">Area Busa 2</span>
+                </div>
+              </div>
             ) : (
-              <h1 className="text-lg font-bold tracking-wider text-accent-blue whitespace-nowrap overflow-hidden text-center">AB2</h1>
+              <div className="flex items-center justify-center">
+                <img 
+                  src="/royal-corp-logo.jpg" 
+                  alt="OptiFoam" 
+                  className="w-8 h-8 rounded-lg object-contain bg-white p-0.5 shadow-sm border border-white/20" 
+                  title="OptiFoam - Area Busa 2"
+                />
+              </div>
             )}
           </div>
           <nav className="flex-1 overflow-y-auto mt-6 px-3 pb-4 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:bg-white/20 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-white/30">

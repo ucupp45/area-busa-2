@@ -186,9 +186,14 @@ const Setting = () => {
             <p className={`text-[11px] ${dm ? 'text-slate-400' : 'text-gray-400'}`}>{user.role || '-'}</p>
           </div>
         </SettingRow>
+        <SettingRow label="Nama Sistem" description="Platform Perencanaan & Realisasi" darkMode={dm}>
+          <span className={`text-xs font-bold px-3 py-1 rounded-full ${dm ? 'bg-blue-900/60 text-blue-300 border border-blue-700/50' : 'bg-blue-50 text-blue-700 border border-blue-200'}`}>
+            OptiFoam
+          </span>
+        </SettingRow>
         <SettingRow label={t.areaProd} description="" darkMode={dm}>
           <span className={`text-xs font-bold px-3 py-1 rounded-full ${dm ? 'bg-slate-700 text-slate-200' : 'bg-gray-100 text-gray-600'}`}>
-            Area Busa 2
+            Area Busa 2 (OptiFoam)
           </span>
         </SettingRow>
         <SettingRow label={t.perusahaan} description="" darkMode={dm}>

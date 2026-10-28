@@ -1549,13 +1549,32 @@ exports.downloadSPK = async (req, res) => {
 // ============================================================
 exports.getChartData = async (req, res) => {
     try {
-        const { startDate, endDate } = req.query;
+        const { startDate, endDate, targetDate } = req.query;
         let dateCondition = "h.tanggal_upload >= DATE_SUB(CURDATE(), INTERVAL 6 DAY)";
         let queryParams = [];
 
         if (startDate && endDate) {
             dateCondition = "DATE(h.tanggal_upload) BETWEEN ? AND ?";
             queryParams.push(startDate, endDate);
+        } else if (targetDate) {
+            dateCondition = "DATE(h.tanggal_upload) BETWEEN DATE_SUB(?, INTERVAL 6 DAY) AND ?";
+            queryParams.push(targetDate, targetDate);
+        } else {
+            // Jika tidak ada parameter tanggal, cek apakah ada data upload dalam 7 hari terakhir dari CURDATE
+            const [recentCheck] = await db.query(
+                "SELECT COUNT(*) as count FROM upload_history WHERE tanggal_upload >= DATE_SUB(CURDATE(), INTERVAL 6 DAY)"
+            );
+            if (recentCheck[0].count === 0) {
+                // Ambil tanggal upload paling baru yang ada di database
+                const [latestRows] = await db.query(
+                    "SELECT DATE_FORMAT(tanggal_upload, '%Y-%m-%d') as latest_date FROM upload_history ORDER BY tanggal_upload DESC LIMIT 1"
+                );
+                if (latestRows && latestRows.length > 0 && latestRows[0].latest_date) {
+                    const lDate = latestRows[0].latest_date;
+                    dateCondition = "DATE(h.tanggal_upload) BETWEEN DATE_SUB(?, INTERVAL 6 DAY) AND ?";
+                    queryParams.push(lDate, lDate);
+                }
+            }
         }
 
         const query = `

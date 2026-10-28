@@ -659,7 +659,7 @@ const DatabaseCycle = () => {
               <h3 className="font-bold text-navy-dark text-lg uppercase">Matriks Product</h3>
               <div className="text-xs text-gray-500 font-bold">PRODUCT TYPE : <span className="text-red-500">SHORT BLOCK (FOAM)</span></div>
               <div className="text-xs text-gray-500 font-bold">PLANT LOCATION : <span className="text-navy-dark">ROYAL 1</span></div>
-              <div className="text-xs text-gray-500 font-bold">PLANT AREA : <span className="text-red-500">BUSA 2</span></div>
+              <div className="text-xs text-gray-500 font-bold">PLANT AREA : <span className="text-blue-600 font-extrabold">OPTIFOAM (BUSA 2)</span></div>
             </div>
             <div className="p-5 overflow-x-auto">
               <table className="w-full text-left border-collapse text-sm">

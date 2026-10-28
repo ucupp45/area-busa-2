@@ -47,7 +47,17 @@ const Dashboard = ({ isAll }) => {
           for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
             days.push({
               tanggal: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`,
-              total_wo: 0, total_sb: 0, waktu_v: 0, waktu_h: 0, waktu_c: 0, qty_h: 0, qty_c: 0, manpower: 0
+              total_wo: 0,
+              total_sb: 0,
+              waktu_v: 0,
+              waktu_h: 0,
+              waktu_c: 0,
+              qty_h: 0,
+              qty_c: 0,
+              mp_v: 0,
+              mp_h: 0,
+              mp_c: 0,
+              manpower: 0
             });
           }
           dataToProcess = days;
@@ -59,14 +69,19 @@ const Dashboard = ({ isAll }) => {
           return {
             ...item,
             labelTanggal: `${parseInt(day)} ${monthNames[parseInt(month) - 1]}`,
-            manpower: item.manpower || 0
+            mp_v: Number(item.mp_v) || 0,
+            mp_h: Number(item.mp_h) || 0,
+            mp_c: Number(item.mp_c) || 0,
+            manpower: Number(item.manpower) || 0
           };
         });
         setChartHistory(formattedHistory);
 
         // Get unique dates for dropdown
-        const dates = [...new Set(chartRes.data.map(item => item.tanggal))];
-        setAvailableDates(dates.sort((a, b) => new Date(b) - new Date(a)));
+        const dates = [...new Set((chartRes.data || []).map(item => item.tanggal))];
+        if (dates.length > 0) {
+          setAvailableDates(dates.sort((a, b) => new Date(b) - new Date(a)));
+        }
       } catch (error) {
         console.error('Error fetching base data:', error);
       }
@@ -335,20 +350,19 @@ const Dashboard = ({ isAll }) => {
                   <ComposedChart data={filteredChartHistory} margin={{ top: 10, right: 10, left: -20, bottom: 0 }} barCategoryGap="10%" barGap={1}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
                     <XAxis dataKey="labelTanggal" axisLine={false} tickLine={false} tick={{ fill: '#6b7280', fontSize: 12 }} />
-                    <YAxis axisLine={false} tickLine={false} tick={{ fill: '#6b7280', fontSize: 12 }} allowDecimals={false} />
+                    <YAxis axisLine={false} tickLine={false} tick={{ fill: '#6b7280', fontSize: 12 }} allowDecimals={false} domain={[0, 'auto']} />
                     <Tooltip cursor={{ fill: '#f3f4f6' }} />
-                    <Bar dataKey="mp_v" name="MP Vertikal" fill="#f59e0b" radius={[4, 4, 0, 0]} maxBarSize={40}>
-                      <LabelList dataKey="mp_v" position="top" style={{ fill: '#6b7280', fontSize: 11, fontWeight: 'bold' }} formatter={(val) => val > 0 ? val : ''} />
+                    <Legend wrapperStyle={{ fontSize: '11px', paddingTop: '4px' }} />
+                    <Bar dataKey="mp_v" name="MP Vertikal" fill="#f59e0b" radius={[4, 4, 0, 0]} maxBarSize={30}>
+                      <LabelList dataKey="mp_v" position="top" style={{ fill: '#6b7280', fontSize: 10, fontWeight: 'bold' }} formatter={(val) => val > 0 ? val : ''} />
                     </Bar>
-                    <Bar dataKey="mp_h" name="MP Horizontal" fill="#3b82f6" radius={[4, 4, 0, 0]} maxBarSize={40}>
-                      <LabelList dataKey="mp_h" position="top" style={{ fill: '#6b7280', fontSize: 11, fontWeight: 'bold' }} formatter={(val) => val > 0 ? val : ''} />
+                    <Bar dataKey="mp_h" name="MP Horizontal" fill="#3b82f6" radius={[4, 4, 0, 0]} maxBarSize={30}>
+                      <LabelList dataKey="mp_h" position="top" style={{ fill: '#6b7280', fontSize: 10, fontWeight: 'bold' }} formatter={(val) => val > 0 ? val : ''} />
                     </Bar>
-                    <Bar dataKey="mp_c" name="MP Carousel" fill="#8b5cf6" radius={[4, 4, 0, 0]} maxBarSize={40}>
-                      <LabelList dataKey="mp_c" position="top" style={{ fill: '#6b7280', fontSize: 11, fontWeight: 'bold' }} formatter={(val) => val > 0 ? val : ''} />
+                    <Bar dataKey="mp_c" name="MP Carousel" fill="#8b5cf6" radius={[4, 4, 0, 0]} maxBarSize={30}>
+                      <LabelList dataKey="mp_c" position="top" style={{ fill: '#6b7280', fontSize: 10, fontWeight: 'bold' }} formatter={(val) => val > 0 ? val : ''} />
                     </Bar>
-                    <Line type="monotone" dataKey="mp_v" stroke="#b45309" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
-                    <Line type="monotone" dataKey="mp_h" stroke="#1d4ed8" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
-                    <Line type="monotone" dataKey="mp_c" stroke="#6d28d9" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
+                    <Line type="monotone" dataKey="manpower" name="Total MP" stroke="#10b981" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
                   </ComposedChart>
                 </ResponsiveContainer>
               </div>
